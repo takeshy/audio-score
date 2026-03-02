@@ -63,6 +63,22 @@ export function MainView({ language }: MainViewProps) {
     const colors = getColors();
     const dpr = window.devicePixelRatio || 1;
 
+    // iOS Safari has a max canvas area of ~16.7 million pixels.
+    // Reduce effective DPR when the canvas would exceed this limit.
+    const MAX_CANVAS_AREA = 16_777_216;
+
+    const applyCanvasSize = (size: { width: number; height: number }) => {
+      let effectiveDpr = dpr;
+      if (size.width * dpr * size.height * dpr > MAX_CANVAS_AREA) {
+        effectiveDpr = Math.sqrt(MAX_CANVAS_AREA / (size.width * size.height));
+      }
+      canvas.width = Math.floor(size.width * effectiveDpr);
+      canvas.height = Math.floor(size.height * effectiveDpr);
+      canvas.style.width = `${size.width}px`;
+      canvas.style.height = `${size.height}px`;
+      ctx.setTransform(effectiveDpr, 0, 0, effectiveDpr, 0, 0);
+    };
+
     if (tab === "canvas") {
       const opts: RenderOptions = {
         width: containerWidth,
@@ -72,13 +88,7 @@ export function MainView({ language }: MainViewProps) {
         chordAnnotations,
       };
       const size = calculateSize(score, opts);
-
-      canvas.width = size.width * dpr;
-      canvas.height = size.height * dpr;
-      canvas.style.width = `${size.width}px`;
-      canvas.style.height = `${size.height}px`;
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      applyCanvasSize(size);
       renderScore(ctx, score, opts);
     } else {
       const opts: PianoRollOptions = {
@@ -90,13 +100,7 @@ export function MainView({ language }: MainViewProps) {
         labelColor: colors.text,
       };
       const size = calculatePianoRollSize(score, opts);
-
-      canvas.width = size.width * dpr;
-      canvas.height = size.height * dpr;
-      canvas.style.width = `${size.width}px`;
-      canvas.style.height = `${size.height}px`;
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      applyCanvasSize(size);
       renderPianoRoll(ctx, score, opts);
     }
   }, [score, chordAnnotations, tab, containerWidth, getColors]);
