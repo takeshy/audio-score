@@ -2,21 +2,17 @@
  * AI service functions using Gemini API for score analysis and transformation.
  */
 
-import { ScoreData } from "../types";
+import { ScoreData, ChordAnnotation } from "../types";
 import { scoreToText } from "../ui/ScoreRenderer";
 import { parseScoreText } from "./scoreParser";
+
+export type { ChordAnnotation };
 
 export interface GeminiAPI {
   chat(
     messages: Array<{ role: string; content: string }>,
     options?: { model?: string; systemPrompt?: string },
   ): Promise<string>;
-}
-
-export interface ChordAnnotation {
-  measureNumber: number;
-  beatIndex: number;
-  chordName: string;
 }
 
 export type SimplificationType = "melody" | "bass" | "simplified";

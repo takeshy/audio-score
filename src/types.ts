@@ -58,6 +58,13 @@ export interface KeySignature {
   accidentals: number;
 }
 
+/** Chord annotation from AI analysis */
+export interface ChordAnnotation {
+  measureNumber: number;
+  beatIndex: number;
+  chordName: string;
+}
+
 /** Complete score data */
 export interface ScoreData {
   /** Detected BPM */
@@ -74,6 +81,8 @@ export interface ScoreData {
   measures: Measure[];
   /** Total duration in seconds */
   totalDuration: number;
+  /** Chord annotations (optional, from AI analysis) */
+  chordAnnotations?: ChordAnnotation[];
 }
 
 /** Pitch range filter presets */

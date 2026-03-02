@@ -99,6 +99,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           const parsed = JSON.parse(text) as ScoreData;
           if (parsed && parsed.measures) {
             setScore(parsed);
+            setChordAnnotations(parsed.chordAnnotations ?? []);
             setFileName(activeFileName.replace(/\.audioscore$/, ""));
             setPhase("done");
           } else {
@@ -306,13 +307,22 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     try {
       const annotations = await analyzeChords(api.gemini, score);
       setChordAnnotations(annotations);
+
+      // Save chord annotations into score and persist to .audioscore file
+      const updatedScore = { ...score, chordAnnotations: annotations };
+      setScore(updatedScore);
+      const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
+      const json = JSON.stringify(updatedScore);
+      saveTemporary(`${baseName}.json`, json).catch(() => {});
+      api.drive.createFile(`${baseName}.audioscore`, json).catch(() => {});
+
       showAiSuccess(i.aiChordsSuccess);
     } catch (err) {
       showAiError(err);
     } finally {
       setAiLoading("");
     }
-  }, [score, aiLoading, api.gemini, i, showAiSuccess, showAiError]);
+  }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
 
   /**
    * Convert to MusicXML and download (no AI needed).
@@ -499,6 +509,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 </button>
               </div>
             )}
+
           </>
         )}
       </div>
