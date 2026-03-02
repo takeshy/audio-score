@@ -1,0 +1,344 @@
+/* Audio Score Plugin Styles */
+
+/* CSS Custom Properties */
+:root {
+  --as-bg-primary: #ffffff;
+  --as-bg-secondary: #f5f5f7;
+  --as-bg-tertiary: #eaeaec;
+  --as-text: #1a1a1a;
+  --as-text-secondary: #666666;
+  --as-text-muted: #999999;
+  --as-border: #d8d8da;
+  --as-accent: #2563eb;
+  --as-accent-hover: #1d4ed8;
+  --as-error: #dc2626;
+  --as-error-bg: #fef2f2;
+  --as-success: #16a34a;
+  --as-success-bg: #f0fdf4;
+  --as-progress-bg: #e5e7eb;
+  --as-progress-fill: #2563eb;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --as-bg-primary: #1e1e2e;
+    --as-bg-secondary: #262637;
+    --as-bg-tertiary: #2e2e42;
+    --as-text: #e0e0e0;
+    --as-text-secondary: #a0a0b0;
+    --as-text-muted: #707080;
+    --as-border: #3e3e52;
+    --as-accent: #3b82f6;
+    --as-accent-hover: #60a5fa;
+    --as-error: #ef4444;
+    --as-error-bg: #2d1b1b;
+    --as-success: #22c55e;
+    --as-success-bg: #1b2d1b;
+    --as-progress-bg: #3e3e52;
+    --as-progress-fill: #3b82f6;
+  }
+}
+
+.dark {
+  --as-bg-primary: #1e1e2e;
+  --as-bg-secondary: #262637;
+  --as-bg-tertiary: #2e2e42;
+  --as-text: #e0e0e0;
+  --as-text-secondary: #a0a0b0;
+  --as-text-muted: #707080;
+  --as-border: #3e3e52;
+  --as-accent: #3b82f6;
+  --as-accent-hover: #60a5fa;
+  --as-error: #ef4444;
+  --as-error-bg: #2d1b1b;
+  --as-success: #22c55e;
+  --as-success-bg: #1b2d1b;
+  --as-progress-bg: #3e3e52;
+  --as-progress-fill: #3b82f6;
+}
+
+/* Container */
+.audio-score-container {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--as-bg-primary);
+  color: var(--as-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--as-border) transparent;
+}
+
+.audio-score-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.audio-score-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.audio-score-container::-webkit-scrollbar-thumb {
+  background: var(--as-border);
+  border-radius: 3px;
+}
+
+/* Panel */
+.audio-score-panel {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* Header */
+.audio-score-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--as-border);
+}
+
+.audio-score-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--as-text);
+}
+
+/* Input section */
+.audio-score-input-section {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+  border: 2px dashed var(--as-border);
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.audio-score-input-section:hover {
+  border-color: var(--as-accent);
+}
+
+.audio-score-hint {
+  margin: 8px 0 12px;
+  color: var(--as-text-muted);
+  font-size: 12px;
+}
+
+/* Drive section */
+.audio-score-drive-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--as-border);
+  text-align: left;
+}
+
+.audio-score-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--as-text-secondary);
+}
+
+.audio-score-drive-row {
+  display: flex;
+  gap: 8px;
+}
+
+.audio-score-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 4px;
+  color: var(--as-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.audio-score-input:focus {
+  border-color: var(--as-accent);
+}
+
+.audio-score-input::placeholder {
+  color: var(--as-text-muted);
+}
+
+/* Buttons */
+.audio-score-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--as-border);
+  border-radius: 6px;
+  background: var(--as-bg-secondary);
+  color: var(--as-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.audio-score-btn:hover:not(:disabled) {
+  background: var(--as-bg-tertiary);
+}
+
+.audio-score-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.audio-score-btn.mod-cta {
+  background: var(--as-accent);
+  color: #ffffff;
+  border-color: var(--as-accent);
+}
+
+.audio-score-btn.mod-cta:hover:not(:disabled) {
+  background: var(--as-accent-hover);
+}
+
+/* Progress */
+.audio-score-progress {
+  margin-bottom: 16px;
+}
+
+.audio-score-progress-bar {
+  height: 4px;
+  background: var(--as-progress-bg);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.audio-score-progress-fill {
+  height: 100%;
+  background: var(--as-progress-fill);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.audio-score-progress-label {
+  font-size: 12px;
+  color: var(--as-text-secondary);
+}
+
+/* Error */
+.audio-score-error {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--as-error-bg);
+  border: 1px solid var(--as-error);
+  border-radius: 6px;
+  color: var(--as-error);
+  font-size: 12px;
+}
+
+/* Info grid */
+.audio-score-info {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+}
+
+.audio-score-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+
+.audio-score-info-label {
+  color: var(--as-text-secondary);
+  font-weight: 500;
+}
+
+/* Canvas wrapper */
+.audio-score-canvas-wrapper {
+  margin-bottom: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--as-border);
+  border-radius: 8px;
+}
+
+.audio-score-canvas {
+  display: block;
+}
+
+/* No notes message */
+.audio-score-no-notes {
+  padding: 24px;
+  text-align: center;
+  color: var(--as-text-muted);
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+/* Actions */
+.audio-score-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audio-score-export-msg {
+  font-size: 12px;
+  color: var(--as-success);
+}
+
+/* Settings */
+.audio-score-settings {
+  padding: 16px;
+}
+
+.audio-score-settings h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--as-text);
+}
+
+.audio-score-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.audio-score-settings-grid label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--as-text-secondary);
+}
+
+.audio-score-settings-grid input,
+.audio-score-settings-grid select {
+  padding: 6px 10px;
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 4px;
+  color: var(--as-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.audio-score-settings-grid input:focus,
+.audio-score-settings-grid select:focus {
+  border-color: var(--as-accent);
+}
+
+.audio-score-settings-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.audio-score-settings-right {
+  display: flex;
+  gap: 8px;
+}
