@@ -80,7 +80,6 @@ function ensureTfLoaded(): Promise<void> {
       await tf.setBackend("wasm");
       await tf.ready();
       patchWasmFillKernel(tf);
-      console.log("[audio-score] WASM backend ready");
       return;
     } catch (e) {
       console.warn("[audio-score] WASM backend failed, falling back to CPU:", e);
@@ -88,7 +87,6 @@ function ensureTfLoaded(): Promise<void> {
 
     await tf.setBackend("cpu");
     await tf.ready();
-    console.log("[audio-score] CPU backend ready");
   })();
   tfLoadPromise.catch(() => { tfLoadPromise = null; });
   return tfLoadPromise;

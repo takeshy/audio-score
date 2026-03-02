@@ -7,6 +7,7 @@ import {
   DetectedNote,
   AnalysisSettings,
   ScoreData,
+  PITCH_RANGES,
 } from "../types";
 import {
   detectBPM,
@@ -33,8 +34,10 @@ export function buildScoreFromNotes(
   notes: DetectedNote[],
   settings: AnalysisSettings,
 ): ScoreData {
-  // Filter out very short notes and sort by startTime
+  // Filter by pitch range, minimum duration, and sort by startTime
+  const range = PITCH_RANGES[settings.pitchRange] ?? PITCH_RANGES.all;
   let filtered = notes
+    .filter((n) => n.midi >= range.min && n.midi <= range.max)
     .filter((n) => n.duration >= settings.minNoteDuration)
     .sort((a, b) => a.startTime - b.startTime);
 
@@ -62,7 +65,7 @@ export function buildScoreFromNotes(
     }
   }
 
-  const bpm = detectBPM(deduped);
+  const bpm = settings.bpmOverride > 0 ? settings.bpmOverride : detectBPM(deduped);
 
   // Quantize durations
   filtered = quantizeNotes(filtered, bpm);

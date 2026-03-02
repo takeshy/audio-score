@@ -12,6 +12,7 @@ import {
   Measure,
 } from "../types";
 import { midiToStaffPosition, getAccidental } from "../core/musicTheory";
+import type { ChordAnnotation } from "../core/aiService";
 
 /** Layout constants */
 const STAFF_LINE_SPACING = 10; // pixels between staff lines
@@ -100,6 +101,7 @@ export interface RenderOptions {
   backgroundColor?: string;
   staffColor?: string;
   noteColor?: string;
+  chordAnnotations?: ChordAnnotation[];
 }
 
 const DEFAULT_OPTIONS: Required<RenderOptions> = {
@@ -107,18 +109,25 @@ const DEFAULT_OPTIONS: Required<RenderOptions> = {
   backgroundColor: "#ffffff",
   staffColor: "#333333",
   noteColor: "#000000",
+  chordAnnotations: [],
 };
 
 /**
  * Calculate required canvas dimensions for the score.
  */
+/** Extra vertical space above each system when chord annotations are present. */
+const CHORD_TOP_EXTRA = 15;
+
 export function calculateSize(
   score: ScoreData,
   options: RenderOptions
 ): { width: number; height: number } {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const { systems, canvasWidth } = layoutSystems(score, opts);
-  const height = systems.length * (STAFF_HEIGHT + SYSTEM_GAP) + TOP_MARGIN + BOTTOM_MARGIN;
+  const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
+  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
+  const { systems, canvasWidth } = layoutSystems(score, opts, topMargin, systemGap);
+  const height = systems.length * (STAFF_HEIGHT + systemGap) + topMargin + BOTTOM_MARGIN;
   return { width: canvasWidth, height };
 }
 
@@ -136,7 +145,9 @@ const MIN_NOTE_UNIT = 48;
 
 function layoutSystems(
   score: ScoreData,
-  opts: Required<RenderOptions>
+  opts: Required<RenderOptions>,
+  topMargin: number = TOP_MARGIN,
+  systemGap: number = SYSTEM_GAP,
 ): { systems: SystemLayout[]; noteUnit: number; canvasWidth: number } {
   // Decoration width that appears on every system
   const decorWidth =
@@ -175,7 +186,7 @@ function layoutSystems(
         (systems.length === 0 ? firstSystemExtra : 0));
       systems.push({
         measures: currentMeasures,
-        y: TOP_MARGIN + systems.length * (STAFF_HEIGHT + SYSTEM_GAP),
+        y: topMargin + systems.length * (STAFF_HEIGHT + systemGap),
       });
       currentMeasures = [];
       currentWidth = 0;
@@ -189,7 +200,7 @@ function layoutSystems(
       (systems.length === 0 ? firstSystemExtra : 0));
     systems.push({
       measures: currentMeasures,
-      y: TOP_MARGIN + systems.length * (STAFF_HEIGHT + SYSTEM_GAP),
+      y: topMargin + systems.length * (STAFF_HEIGHT + systemGap),
     });
   }
 
@@ -208,7 +219,10 @@ export function renderScore(
   options: RenderOptions
 ): void {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const { systems, noteUnit, canvasWidth } = layoutSystems(score, opts);
+  const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
+  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
+  const { systems, noteUnit, canvasWidth } = layoutSystems(score, opts, topMargin, systemGap);
 
   // Clear
   ctx.fillStyle = opts.backgroundColor;
@@ -226,7 +240,7 @@ function renderSystem(
   score: ScoreData,
   system: SystemLayout,
   opts: Required<RenderOptions>,
-  noteUnit: number
+  noteUnit: number,
 ): void {
   const staffTop = system.y;
   const staffLeft = LEFT_MARGIN;
@@ -251,11 +265,24 @@ function renderSystem(
 
   // Draw measures with proportional spacing
   let noteX = x + BARLINE_GAP;
+  const chordAnns = opts.chordAnnotations ?? [];
   for (let mi = 0; mi < system.measures.length; mi++) {
     const measure = system.measures[mi];
     const beats = groupBeats(measure.notes);
 
-    for (const bg of beats) {
+    for (let beatIdx = 0; beatIdx < beats.length; beatIdx++) {
+      const bg = beats[beatIdx];
+
+      // Draw chord annotation if present
+      if (chordAnns.length > 0) {
+        const ann = chordAnns.find(
+          (a) => a.measureNumber === measure.number && a.beatIndex === beatIdx,
+        );
+        if (ann) {
+          drawChordName(ctx, noteX, staffTop, ann.chordName, opts.noteColor);
+        }
+      }
+
       // Draw all note heads + ledger lines + accidentals at the same x
       for (const note of bg.notes) {
         drawNoteHead_full(ctx, noteX, staffTop, note, score.clef, score.key, opts.noteColor);
@@ -720,6 +747,23 @@ function drawFinalBarLine(
   ctx.moveTo(x, staffTop - BAR_LINE_EXTRA);
   ctx.lineTo(x, staffTop + STAFF_HEIGHT + BAR_LINE_EXTRA);
   ctx.stroke();
+}
+
+/** Draw a chord name above the staff. */
+function drawChordName(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  staffTop: number,
+  chordName: string,
+  color: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = "bold 11px sans-serif";
+  ctx.textBaseline = "bottom";
+  ctx.textAlign = "left";
+  ctx.fillText(chordName, x - 4, staffTop - 4);
+  ctx.restore();
 }
 
 /**

@@ -76,6 +76,16 @@ export interface ScoreData {
   totalDuration: number;
 }
 
+/** Pitch range filter presets */
+export type PitchRange = "all" | "cut_bass" | "melody";
+
+/** MIDI note ranges for each preset */
+export const PITCH_RANGES: Record<PitchRange, { min: number; max: number }> = {
+  all: { min: 0, max: 127 },
+  cut_bass: { min: 48, max: 127 },   // C3+ — removes bass & kick drum
+  melody: { min: 60, max: 96 },       // C4–C7 — vocal / lead range
+};
+
 /** Analysis settings */
 export interface AnalysisSettings {
   /** Onset detection threshold (0-1) */
@@ -88,6 +98,10 @@ export interface AnalysisSettings {
   beatsPerMeasure: number;
   /** Beat unit (4 = quarter note) */
   beatUnit: number;
+  /** Manual BPM override (0 = auto-detect) */
+  bpmOverride: number;
+  /** Pitch range filter */
+  pitchRange: PitchRange;
 }
 
 /** Default analysis settings */
@@ -97,6 +111,8 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   minNoteDuration: 0.05,
   beatsPerMeasure: 4,
   beatUnit: 4,
+  bpmOverride: 0,
+  pitchRange: "all",
 };
 
 /** Analysis pipeline progress */

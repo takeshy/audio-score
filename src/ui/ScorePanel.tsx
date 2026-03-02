@@ -4,14 +4,18 @@
  */
 
 import * as React from "react";
-import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS } from "../types";
+import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, PitchRange } from "../types";
 import { detectPitchBasicPitch } from "../core/basicPitchDetector";
 import { buildScoreFromNotes } from "../core/noteSegmenter";
-import { renderScore, calculateSize, scoreToText } from "./ScoreRenderer";
 import { t } from "../i18n";
 import { saveTemporary } from "../storage/idb";
 import { playScore, PlaybackHandle } from "../core/player";
-import { parseScoreText } from "../core/scoreParser";
+import {
+  ChordAnnotation,
+  analyzeChords,
+  convertToMusicXML,
+} from "../core/aiService";
+import { setState } from "../store";
 
 interface PluginAPI {
   language?: string;
@@ -22,6 +26,12 @@ interface PluginAPI {
   storage: {
     get(key: string): Promise<unknown>;
     set(key: string, value: unknown): Promise<void>;
+  };
+  gemini: {
+    chat(
+      messages: Array<{ role: string; content: string }>,
+      options?: { model?: string; systemPrompt?: string },
+    ): Promise<string>;
   };
 }
 
@@ -42,17 +52,19 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const [score, setScore] = React.useState<ScoreData | null>(null);
   const [error, setError] = React.useState<string>("");
   const [fileName, setFileName] = React.useState<string>("");
-  const [driveFileId, setDriveFileId] = React.useState<string>("");
-  const [driveLoading, setDriveLoading] = React.useState(false);
-  const [exportMsg, setExportMsg] = React.useState<string>("");
   const [settings, setSettings] = React.useState<AnalysisSettings>(DEFAULT_SETTINGS);
   const [playing, setPlaying] = React.useState(false);
-  const [saveMsg, setSaveMsg] = React.useState("");
+  const [bpmInput, setBpmInput] = React.useState("");
+  const [pitchRange, setPitchRange] = React.useState<PitchRange>("all");
 
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  // AI state
+  const [aiLoading, setAiLoading] = React.useState("");
+  const [aiMessage, setAiMessage] = React.useState("");
+  const [aiError, setAiError] = React.useState("");
+  const [chordAnnotations, setChordAnnotations] = React.useState<ChordAnnotation[]>([]);
+
   const playbackRef = React.useRef<PlaybackHandle | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const containerRef = React.useRef<HTMLDivElement>(null);
 
   // Load settings on mount
   React.useEffect(() => {
@@ -63,14 +75,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     });
   }, [api]);
 
-  // Auto-load if the currently open file is a score.md
+  const AUDIO_EXTS = /\.(mp3|wav|ogg|flac|aac|m4a|webm|wma)$/i;
+
+  // Whether the currently open file is an audio file
+  const isCurrentFileAudio = !!(activeFileId && activeFileName && AUDIO_EXTS.test(activeFileName));
+
+  // Auto-load if the currently open file is a .audioscore (ScoreData JSON)
   React.useEffect(() => {
-    console.log("[audio-score] auto-load effect:", { activeFileId, activeFileName });
     if (!activeFileId || !activeFileName) return;
-    if (!activeFileName.endsWith("-score.md")) {
-      console.log("[audio-score] not a score.md, skipping");
-      return;
-    }
+    if (!activeFileName.endsWith(".audioscore")) return;
 
     setPhase("loading");
     setError("");
@@ -82,79 +95,24 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
     loadText.then(
       (text) => {
-        console.log("[audio-score] loaded text, length:", text.length, "first 200:", text.slice(0, 200));
-        const parsed = parseScoreText(text);
-        console.log("[audio-score] parseScoreText result:", parsed ? `${parsed.measures.length} measures, ${parsed.measures.reduce((s, m) => s + m.notes.length, 0)} notes` : "null");
-        if (parsed) {
-          setScore(parsed);
-          setFileName(activeFileName.replace(/-score\.md$/, ""));
-          setPhase("done");
-        } else {
+        try {
+          const parsed = JSON.parse(text) as ScoreData;
+          if (parsed && parsed.measures) {
+            setScore(parsed);
+            setFileName(activeFileName.replace(/\.audioscore$/, ""));
+            setPhase("done");
+          } else {
+            setPhase("idle");
+          }
+        } catch {
           setPhase("idle");
         }
       },
-      (err) => {
-        console.error("[audio-score] failed to load:", err);
+      () => {
         setPhase("idle");
       },
     );
   }, [activeFileId, activeFileName, api]);
-
-  // Render score to canvas
-  const paintCanvas = React.useCallback(() => {
-    console.log("[audio-score] paintCanvas called, score:", !!score, "canvas:", !!canvasRef.current);
-    if (!score || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    const containerWidth = container ? container.clientWidth - 16 : 760;
-    console.log("[audio-score] containerWidth:", containerWidth);
-
-    try {
-      const size = calculateSize(score, { width: containerWidth });
-      console.log("[audio-score] calculateSize:", size);
-      const dpr = window.devicePixelRatio || 1;
-
-      canvas.width = size.width * dpr;
-      canvas.height = size.height * dpr;
-      canvas.style.width = `${size.width}px`;
-      canvas.style.height = `${size.height}px`;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { console.error("[audio-score] failed to get 2d context"); return; }
-
-      ctx.scale(dpr, dpr);
-
-      const isDark =
-        document.documentElement.classList.contains("dark") ||
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-      console.log("[audio-score] calling renderScore...");
-      renderScore(ctx, score, {
-        width: containerWidth,
-        backgroundColor: isDark ? "#1e1e2e" : "#ffffff",
-        staffColor: isDark ? "#a0a0b0" : "#333333",
-        noteColor: isDark ? "#e0e0e0" : "#000000",
-      });
-      console.log("[audio-score] renderScore done");
-    } catch (err) {
-      console.error("[audio-score] paintCanvas error:", err);
-    }
-  }, [score]);
-
-  // Re-render when score changes
-  React.useEffect(() => {
-    paintCanvas();
-  }, [paintCanvas]);
-
-  // Re-render when container resizes
-  React.useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const ro = new ResizeObserver(() => paintCanvas());
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [paintCanvas]);
 
   // Stop playback when score changes or on unmount
   React.useEffect(() => {
@@ -166,6 +124,10 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       }
     };
   }, [score]);
+
+  // Sync score and chordAnnotations to shared store for main view
+  React.useEffect(() => { setState({ score }); }, [score]);
+  React.useEffect(() => { setState({ chordAnnotations }); }, [chordAnnotations]);
 
   const progressLabel = (p: AnalysisProgress): string => {
     const labels: Record<AnalysisProgress["stage"], string> = {
@@ -196,7 +158,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
         // Load model & detect pitch
         setProgress({ stage: "loading_model", percent: 10 });
-        console.log("[audio-score] starting detectPitchBasicPitch...");
         const notes = await detectPitchBasicPitch(
           audioBuffer,
           (pct) => {
@@ -205,14 +166,13 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           settings.onsetThreshold,
           settings.frameThreshold,
         );
-        console.log("[audio-score] detectPitchBasicPitch done, notes:", notes.length);
 
         // Build score
         setProgress({ stage: "quantizing", percent: 85 });
         await new Promise((r) => setTimeout(r, 0));
 
-        const scoreData = buildScoreFromNotes(notes, settings);
-        console.log("[audio-score] buildScoreFromNotes done, measures:", scoreData.measures.length, "totalNotes:", scoreData.measures.reduce((s, m) => s + m.notes.length, 0));
+        const bpmOverride = bpmInput ? parseInt(bpmInput, 10) || 0 : 0;
+        const scoreData = buildScoreFromNotes(notes, { ...settings, bpmOverride, pitchRange });
 
         setProgress({ stage: "done", percent: 100 });
         setScore(scoreData);
@@ -221,6 +181,10 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
         // Save ScoreData JSON to IndexedDB
         const baseName = name.replace(/\.[^.]+$/, "");
         saveTemporary(`${baseName}.json`, JSON.stringify(scoreData)).catch(() => {});
+
+        // Auto-save as .audioscore to Drive
+        const json = JSON.stringify(scoreData);
+        api.drive.createFile(`${baseName}.audioscore`, json).catch(() => {});
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setError(`${i.errorAnalysis}: ${msg}`);
@@ -229,8 +193,32 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
         await audioCtx.close();
       }
     },
-    [settings, i]
+    [settings, bpmInput, pitchRange, i, api]
   );
+
+  /**
+   * Load the currently open audio file and analyze it.
+   */
+  const handleCurrentFileAnalyze = React.useCallback(async () => {
+    if (!activeFileId || !activeFileName) return;
+
+    setPhase("loading");
+    setError("");
+
+    try {
+      const resp = await fetch(
+        `/api/drive/files?action=raw&fileId=${encodeURIComponent(activeFileId)}`,
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const buf = await resp.arrayBuffer();
+      await analyzeAudio(buf, activeFileName);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`${i.errorDecode}: ${msg}`);
+      setPhase("error");
+    }
+  }, [activeFileId, activeFileName, analyzeAudio, i]);
 
   /**
    * Handle file input change.
@@ -273,76 +261,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   }, []);
 
   /**
-   * Load audio from Google Drive via raw endpoint.
-   */
-  const handleDriveLoad = React.useCallback(async () => {
-    if (!driveFileId.trim()) return;
-
-    setDriveLoading(true);
-    setPhase("loading");
-    setError("");
-
-    try {
-      const resp = await fetch(
-        `/api/drive/files?action=raw&fileId=${encodeURIComponent(driveFileId.trim())}`
-      );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-      const buf = await resp.arrayBuffer();
-      const name = `drive-${driveFileId.trim().slice(0, 8)}`;
-      await analyzeAudio(buf, name);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`${i.errorDecode}: ${msg}`);
-      setPhase("error");
-    } finally {
-      setDriveLoading(false);
-    }
-  }, [driveFileId, analyzeAudio, i]);
-
-  /**
-   * Export score as text to Drive.
-   */
-  const handleExport = React.useCallback(async () => {
-    if (!score) return;
-    setExportMsg("");
-
-    try {
-      const text = scoreToText(score);
-      const exportName = fileName
-        ? fileName.replace(/\.[^.]+$/, "") + "-score.md"
-        : "audio-score.md";
-      await api.drive.createFile(exportName, text);
-      setExportMsg(i.exportSuccess);
-    } catch {
-      setExportMsg(i.exportError);
-    }
-
-    setTimeout(() => setExportMsg(""), 3000);
-  }, [score, fileName, api, i]);
-
-  /**
-   * Save canvas as PNG file download.
-   */
-  const handleSaveImage = React.useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !fileName) return;
-
-    const baseName = fileName.replace(/\.[^.]+$/, "");
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseName}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setSaveMsg(i.saveImageSuccess);
-      setTimeout(() => setSaveMsg(""), 3000);
-    }, "image/png");
-  }, [fileName, i]);
-
-  /**
    * Toggle score playback.
    */
   const handlePlayStop = React.useCallback(() => {
@@ -365,16 +283,65 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     });
   }, [playing, score]);
 
+  // AI helper: show success message for 3 seconds
+  const showAiSuccess = React.useCallback((msg: string) => {
+    setAiMessage(msg);
+    setTimeout(() => setAiMessage(""), 3000);
+  }, []);
+
+  // AI helper: show error message
+  const showAiError = React.useCallback((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    setAiError(`${i.aiError}: ${msg}`);
+    setTimeout(() => setAiError(""), 5000);
+  }, [i]);
+
+  /**
+   * AI: Analyze chords
+   */
+  const handleAiChords = React.useCallback(async () => {
+    if (!score || aiLoading) return;
+    setAiLoading("chords");
+    setAiError("");
+    try {
+      const annotations = await analyzeChords(api.gemini, score);
+      setChordAnnotations(annotations);
+      showAiSuccess(i.aiChordsSuccess);
+    } catch (err) {
+      showAiError(err);
+    } finally {
+      setAiLoading("");
+    }
+  }, [score, aiLoading, api.gemini, i, showAiSuccess, showAiError]);
+
+  /**
+   * Convert to MusicXML and download (no AI needed).
+   */
+  const handleMusicXML = React.useCallback(() => {
+    if (!score) return;
+    try {
+      const xml = convertToMusicXML(score);
+      const blob = new Blob([xml], { type: "application/vnd.recordare.musicxml+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
+      a.download = `${baseName}.musicxml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showAiSuccess(i.aiMusicXMLSuccess);
+    } catch (err) {
+      showAiError(err);
+    }
+  }, [score, fileName, i, showAiSuccess, showAiError]);
+
   // Count total notes
   const totalNotes = score
     ? score.measures.reduce((sum, m) => sum + m.notes.length, 0)
     : 0;
 
-  console.log("[audio-score] render, phase:", phase, "score:", !!score, "totalNotes:", totalNotes);
-
   return (
     <div
-      ref={containerRef}
       className="audio-score-container"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
@@ -403,27 +370,55 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           </button>
           <p className="audio-score-hint">{i.orDragDrop}</p>
 
-          {/* Drive file loading */}
-          <div className="audio-score-drive-section">
-            <label className="audio-score-label">{i.loadFromDrive}</label>
-            <div className="audio-score-drive-row">
-              <input
-                type="text"
-                className="audio-score-input"
-                placeholder={i.driveFileId}
-                value={driveFileId}
-                onChange={(e) => setDriveFileId(e.target.value)}
-                disabled={phase === "analyzing" || driveLoading}
-              />
-              <button
-                className="audio-score-btn"
-                onClick={handleDriveLoad}
-                disabled={!driveFileId.trim() || phase === "analyzing" || driveLoading}
-              >
-                {driveLoading ? i.driveLoading : i.driveLoad}
-              </button>
+          {/* BPM override & Pitch range */}
+          <div className="audio-score-bpm-section">
+            <div className="audio-score-options-row">
+              <div className="audio-score-option-group">
+                <label className="audio-score-label">{i.bpmOverride}</label>
+                <input
+                  type="number"
+                  className="audio-score-input"
+                  placeholder={i.bpmOverrideHint}
+                  value={bpmInput}
+                  min={0}
+                  max={300}
+                  onChange={(e) => setBpmInput(e.target.value)}
+                  disabled={phase === "analyzing"}
+                  style={{ width: "100px" }}
+                />
+              </div>
+              <div className="audio-score-option-group">
+                <label className="audio-score-label">{i.pitchRange}</label>
+                <select
+                  className="audio-score-input"
+                  value={pitchRange}
+                  onChange={(e) => setPitchRange(e.target.value as PitchRange)}
+                  disabled={phase === "analyzing"}
+                >
+                  <option value="all">{i.pitchRangeAll}</option>
+                  <option value="cut_bass">{i.pitchRangeCutBass}</option>
+                  <option value="melody">{i.pitchRangeMelody}</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* Current audio file */}
+          {isCurrentFileAudio && (
+            <div className="audio-score-drive-section">
+              <label className="audio-score-label">{i.currentFile}</label>
+              <div className="audio-score-drive-row">
+                <span className="audio-score-current-file-name">{activeFileName}</span>
+                <button
+                  className="audio-score-btn mod-cta"
+                  onClick={handleCurrentFileAnalyze}
+                  disabled={phase === "analyzing"}
+                >
+                  {phase === "analyzing" ? i.analyzing : i.analyzeCurrentFile}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Progress */}
@@ -468,30 +463,40 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
               </div>
             </div>
 
-            {/* Canvas */}
-            {totalNotes > 0 ? (
-              <div className="audio-score-canvas-wrapper">
-                <canvas ref={canvasRef} className="audio-score-canvas" />
+            {/* AI Section */}
+            {totalNotes > 0 && api.gemini && (
+              <div className="audio-score-ai-section">
+                <div className="audio-score-ai-section-title">{i.aiSection}</div>
+                <div className="audio-score-ai-buttons">
+                  <button
+                    className={`audio-score-btn${aiLoading === "chords" ? " is-loading" : ""}`}
+                    onClick={handleAiChords}
+                    disabled={!!aiLoading}
+                  >
+                    {aiLoading === "chords" ? i.aiChordsLoading : i.aiChords}
+                  </button>
+                  <button
+                    className="audio-score-btn"
+                    onClick={handleMusicXML}
+                  >
+                    {i.aiMusicXML}
+                  </button>
+                </div>
+                {aiMessage && <div className="audio-score-ai-msg">{aiMessage}</div>}
+                {aiError && <div className="audio-score-ai-error">{aiError}</div>}
               </div>
-            ) : (
+            )}
+
+            {totalNotes === 0 && (
               <div className="audio-score-no-notes">{i.noNotes}</div>
             )}
 
             {/* Actions */}
             {totalNotes > 0 && (
               <div className="audio-score-actions">
-                <button className="audio-score-btn" onClick={handleSaveImage}>
-                  {i.saveImage}
-                </button>
                 <button className="audio-score-btn" onClick={handlePlayStop}>
                   {playing ? i.stop : i.play}
                 </button>
-                <button className="audio-score-btn mod-cta" onClick={handleExport}>
-                  {i.export}
-                </button>
-                {(exportMsg || saveMsg) && (
-                  <span className="audio-score-export-msg">{exportMsg || saveMsg}</span>
-                )}
               </div>
             )}
           </>

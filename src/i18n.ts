@@ -31,6 +31,12 @@ export interface Translations {
   minNoteDuration: string;
   beatsPerMeasure: string;
   beatUnit: string;
+  bpmOverride: string;
+  bpmOverrideHint: string;
+  pitchRange: string;
+  pitchRangeAll: string;
+  pitchRangeCutBass: string;
+  pitchRangeMelody: string;
   resetDefaults: string;
   save: string;
   cancel: string;
@@ -38,15 +44,37 @@ export interface Translations {
   errorDecode: string;
   errorAnalysis: string;
   errorNoAudio: string;
-  // Drive
-  driveFileId: string;
-  driveLoad: string;
-  driveLoading: string;
+  // Current file
+  currentFile: string;
+  analyzeCurrentFile: string;
   // Playback & image
   saveImage: string;
   saveImageSuccess: string;
   play: string;
   stop: string;
+  // AI features
+  aiSection: string;
+  aiChords: string;
+  aiChordsLoading: string;
+  aiChordsSuccess: string;
+  aiAnalysis: string;
+  aiAnalysisLoading: string;
+  aiAnalysisTitle: string;
+  aiAnalysisCollapse: string;
+  aiAnalysisExpand: string;
+  aiSimplify: string;
+  aiSimplifyLoading: string;
+  aiSimplifyMelody: string;
+  aiSimplifyBass: string;
+  aiSimplifySimplified: string;
+  aiSimplifySuccess: string;
+  aiMusicXML: string;
+  aiMusicXMLSuccess: string;
+  aiError: string;
+  // Main view
+  tabCanvas: string;
+  tabMidi: string;
+  mainViewEmpty: string;
 }
 
 const en: Translations = {
@@ -79,19 +107,45 @@ const en: Translations = {
   minNoteDuration: "Min Note Duration (s)",
   beatsPerMeasure: "Beats per Measure",
   beatUnit: "Beat Unit",
+  bpmOverride: "BPM Override",
+  bpmOverrideHint: "0 = auto-detect",
+  pitchRange: "Pitch Range",
+  pitchRangeAll: "All (full range)",
+  pitchRangeCutBass: "Cut Bass (C3+)",
+  pitchRangeMelody: "Melody Only (C4–C7)",
   resetDefaults: "Reset to Defaults",
   save: "Save",
   cancel: "Cancel",
   errorDecode: "Failed to decode audio file",
   errorAnalysis: "Analysis error",
   errorNoAudio: "Please load an audio file first",
-  driveFileId: "Drive File ID",
-  driveLoad: "Load",
-  driveLoading: "Loading...",
+  currentFile: "Current file",
+  analyzeCurrentFile: "Analyze",
   saveImage: "Save Image",
   saveImageSuccess: "Image saved",
   play: "Play",
   stop: "Stop",
+  aiSection: "AI Features",
+  aiChords: "Chords",
+  aiChordsLoading: "Analyzing chords...",
+  aiChordsSuccess: "Chord annotations added",
+  aiAnalysis: "Analysis",
+  aiAnalysisLoading: "Analyzing music...",
+  aiAnalysisTitle: "Music Analysis",
+  aiAnalysisCollapse: "Collapse",
+  aiAnalysisExpand: "Expand",
+  aiSimplify: "Simplify",
+  aiSimplifyLoading: "Simplifying...",
+  aiSimplifyMelody: "Melody only",
+  aiSimplifyBass: "Bass only",
+  aiSimplifySimplified: "Simplified",
+  aiSimplifySuccess: "Score simplified",
+  aiMusicXML: "MusicXML",
+  aiMusicXMLSuccess: "MusicXML downloaded",
+  aiError: "AI processing failed",
+  tabCanvas: "Score",
+  tabMidi: "Piano Roll",
+  mainViewEmpty: "Load an audio file from the sidebar",
 };
 
 const ja: Translations = {
@@ -124,19 +178,45 @@ const ja: Translations = {
   minNoteDuration: "最小音符長 (秒)",
   beatsPerMeasure: "拍子（分子）",
   beatUnit: "拍子（分母）",
+  bpmOverride: "BPM 指定",
+  bpmOverrideHint: "0 = 自動検出",
+  pitchRange: "音域フィルタ",
+  pitchRangeAll: "全帯域",
+  pitchRangeCutBass: "低音カット (C3以上)",
+  pitchRangeMelody: "メロディのみ (C4〜C7)",
   resetDefaults: "デフォルトに戻す",
   save: "保存",
   cancel: "キャンセル",
   errorDecode: "音声ファイルのデコードに失敗しました",
   errorAnalysis: "解析エラー",
   errorNoAudio: "先に音声ファイルを読み込んでください",
-  driveFileId: "Drive ファイル ID",
-  driveLoad: "読み込む",
-  driveLoading: "読み込み中...",
+  currentFile: "現在のファイル",
+  analyzeCurrentFile: "解析",
   saveImage: "画像を保存",
   saveImageSuccess: "画像を保存しました",
   play: "再生",
   stop: "停止",
+  aiSection: "AI 機能",
+  aiChords: "コード名",
+  aiChordsLoading: "コード分析中...",
+  aiChordsSuccess: "コード注釈を追加しました",
+  aiAnalysis: "分析",
+  aiAnalysisLoading: "楽曲分析中...",
+  aiAnalysisTitle: "楽曲分析",
+  aiAnalysisCollapse: "折りたたむ",
+  aiAnalysisExpand: "展開する",
+  aiSimplify: "簡略化",
+  aiSimplifyLoading: "簡略化中...",
+  aiSimplifyMelody: "メロディのみ",
+  aiSimplifyBass: "ベースのみ",
+  aiSimplifySimplified: "簡略化",
+  aiSimplifySuccess: "楽譜を簡略化しました",
+  aiMusicXML: "MusicXML",
+  aiMusicXMLSuccess: "MusicXML をダウンロードしました",
+  aiError: "AI 処理に失敗しました",
+  tabCanvas: "楽譜",
+  tabMidi: "ピアノロール",
+  mainViewEmpty: "サイドバーから音声ファイルを読み込んでください",
 };
 
 const translations: Record<string, Translations> = { en, ja };

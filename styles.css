@@ -125,7 +125,37 @@
   font-size: 12px;
 }
 
-/* Drive section */
+/* BPM section */
+.audio-score-bpm-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--as-border);
+  text-align: left;
+}
+
+.audio-score-options-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.audio-score-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Current file / Drive section */
+.audio-score-current-file-name {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--as-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .audio-score-drive-section {
   margin-top: 12px;
   padding-top: 12px;
@@ -341,4 +371,186 @@
 .audio-score-settings-right {
   display: flex;
   gap: 8px;
+}
+
+/* AI Section */
+.audio-score-ai-section {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--as-border);
+}
+
+.audio-score-ai-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--as-text-secondary);
+  margin-bottom: 8px;
+}
+
+.audio-score-ai-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.audio-score-ai-msg {
+  font-size: 12px;
+  color: var(--as-success);
+  margin-top: 6px;
+}
+
+.audio-score-ai-error {
+  font-size: 12px;
+  color: var(--as-error);
+  margin-top: 6px;
+}
+
+/* Simplify dropdown */
+.audio-score-simplify-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.audio-score-simplify-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 140px;
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.audio-score-simplify-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--as-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.audio-score-simplify-dropdown button:hover {
+  background: var(--as-bg-tertiary);
+}
+
+/* Analysis panel */
+.audio-score-analysis {
+  margin-bottom: 16px;
+  border: 1px solid var(--as-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.audio-score-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--as-bg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.audio-score-analysis-header:hover {
+  background: var(--as-bg-tertiary);
+}
+
+.audio-score-analysis-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--as-text);
+}
+
+.audio-score-analysis-toggle {
+  font-size: 12px;
+  color: var(--as-accent);
+}
+
+.audio-score-analysis-body {
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--as-text);
+  white-space: pre-wrap;
+}
+
+/* Loading state for AI buttons */
+.audio-score-btn.is-loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* ===== Main View ===== */
+.audio-score-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--as-bg-primary);
+  color: var(--as-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+}
+
+.audio-score-main-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--as-border);
+  flex-shrink: 0;
+}
+
+.audio-score-main-tab {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--as-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.audio-score-main-tab:hover {
+  color: var(--as-text);
+  background: var(--as-bg-secondary);
+}
+
+.audio-score-main-tab.is-active {
+  color: var(--as-accent);
+  border-color: var(--as-border);
+  background: var(--as-bg-secondary);
+}
+
+.audio-score-main-tab-spacer {
+  flex: 1;
+}
+
+.audio-score-main-canvas-area {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.audio-score-main-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--as-text-muted);
+  font-size: 14px;
 }

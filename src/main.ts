@@ -7,6 +7,7 @@
 
 import { ScorePanel } from "./ui/ScorePanel";
 import { SettingsPanel } from "./ui/SettingsPanel";
+import { MainView } from "./ui/MainView";
 
 interface PluginAPI {
   registerView(view: {
@@ -14,6 +15,7 @@ interface PluginAPI {
     name: string;
     icon?: string;
     location: "sidebar" | "main";
+    extensions?: string[];
     component: unknown;
   }): void;
   registerSettingsTab(tab: {
@@ -35,6 +37,14 @@ class AudioScorePlugin {
       name: "Audio Score",
       location: "sidebar",
       component: ScorePanel,
+    });
+
+    api.registerView({
+      id: "audio-score-main",
+      name: "Audio Score",
+      location: "main",
+      extensions: [".audioscore"],
+      component: MainView,
     });
 
     api.registerSettingsTab({
