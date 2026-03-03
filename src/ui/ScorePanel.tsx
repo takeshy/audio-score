@@ -471,6 +471,14 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 <span>{score.measures.length}</span>
                 <span className="audio-score-info-label">{i.duration}:</span>
                 <span>{score.totalDuration.toFixed(1)}s</span>
+                <span className="audio-score-info-label">{i.pitchRange}:</span>
+                <span>
+                  {score.pitchRange === "melody"
+                    ? i.pitchRangeMelody
+                    : score.pitchRange === "cut_bass"
+                      ? i.pitchRangeCutBass
+                      : i.pitchRangeAll}
+                </span>
               </div>
             </div>
 

@@ -83,6 +83,8 @@ export interface ScoreData {
   totalDuration: number;
   /** Chord annotations (optional, from AI analysis) */
   chordAnnotations?: ChordAnnotation[];
+  /** Pitch range filter used during analysis */
+  pitchRange?: PitchRange;
 }
 
 /** Pitch range filter presets */

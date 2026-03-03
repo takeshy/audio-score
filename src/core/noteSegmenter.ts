@@ -50,6 +50,7 @@ export function buildScoreFromNotes(
       clef: "treble",
       measures: [],
       totalDuration: 0,
+      pitchRange: settings.pitchRange,
     };
   }
 
@@ -92,5 +93,6 @@ export function buildScoreFromNotes(
     clef,
     measures,
     totalDuration,
+    pitchRange: settings.pitchRange,
   };
 }

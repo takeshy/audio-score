@@ -261,6 +261,12 @@ export function renderScore(
 
   // Use canvasWidth for staff line right edge
   const renderOpts = { ...opts, width: canvasWidth };
+
+  // Draw score header (tempo + key) above the first system
+  if (systems.length > 0) {
+    drawScoreHeader(ctx, systems[0].y, renderOpts.width, score, opts.noteColor);
+  }
+
   for (const system of systems) {
     renderSystem(ctx, score, system, renderOpts, noteUnit);
   }
@@ -778,6 +784,32 @@ function drawFinalBarLine(
   ctx.moveTo(x, staffTop - BAR_LINE_EXTRA);
   ctx.lineTo(x, staffTop + STAFF_HEIGHT + BAR_LINE_EXTRA);
   ctx.stroke();
+}
+
+/** Draw tempo marking and key label above the first system. */
+function drawScoreHeader(
+  ctx: CanvasRenderingContext2D,
+  staffTop: number,
+  canvasWidth: number,
+  score: ScoreData,
+  color: string,
+): void {
+  const y = staffTop - 15;
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = "bold 13px sans-serif";
+  ctx.textBaseline = "bottom";
+
+  // Left: tempo marking  ♩= {bpm}
+  ctx.textAlign = "left";
+  ctx.fillText(`♩= ${score.bpm}`, LEFT_MARGIN, y);
+
+  // Right: key  {root} {mode}
+  ctx.textAlign = "right";
+  ctx.fillText(`${score.key.root} ${score.key.mode}`, canvasWidth - RIGHT_MARGIN, y);
+
+  ctx.restore();
 }
 
 /** Draw a chord name above the staff. */
