@@ -24,6 +24,61 @@ import {
 } from "../types";
 import { midiToFrequency } from "./musicTheory";
 
+/** A beat position: one or more notes sharing the same startTime. */
+export interface BeatGroup {
+  notes: DetectedNote[];
+  durationType: string;
+  dotted: boolean;
+}
+
+/** Tolerance for grouping simultaneous notes (seconds). */
+export const CHORD_TOLERANCE = 0.02;
+
+/** Group measure notes into beat positions (chords share startTime). */
+export function groupBeats(notes: DetectedNote[]): BeatGroup[] {
+  if (notes.length === 0) return [];
+  const sorted = [...notes].sort((a, b) => a.startTime - b.startTime);
+  const groups: BeatGroup[] = [];
+  let cur: DetectedNote[] = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (Math.abs(sorted[i].startTime - cur[0].startTime) <= CHORD_TOLERANCE) {
+      cur.push(sorted[i]);
+    } else {
+      groups.push({
+        notes: cur,
+        durationType: cur[0].durationType,
+        dotted: cur[0].dotted,
+      });
+      cur = [sorted[i]];
+    }
+  }
+  groups.push({
+    notes: cur,
+    durationType: cur[0].durationType,
+    dotted: cur[0].dotted,
+  });
+  return groups;
+}
+
+/** Convert measures to text format (M1: ... M2: ...). */
+export function measuresToText(measures: Measure[]): string {
+  const lines: string[] = [];
+  for (const measure of measures) {
+    const beats = groupBeats(measure.notes);
+    const tokens = beats.map((bg) => {
+      const dot = bg.dotted ? "." : "";
+      if (bg.notes.length === 1) {
+        return `${bg.notes[0].name}${dot}(${bg.durationType})`;
+      }
+      const names = bg.notes.map((n) => n.name).join(",");
+      return `[${names}]${dot}(${bg.durationType})`;
+    });
+    lines.push(`M${measure.number}: ${tokens.join(" ")}`);
+  }
+  return lines.join("\n");
+}
+
 const NOTE_NAME_TO_PC: Record<string, number> = {
   "C": 0, "C#": 1, "Db": 1,
   "D": 2, "D#": 3, "Eb": 3,
@@ -47,7 +102,7 @@ function noteNameToMidi(name: string): number {
 }
 
 const VALID_DURATIONS = new Set<string>([
-  "whole", "half", "quarter", "eighth", "sixteenth",
+  "whole", "half", "quarter", "eighth", "sixteenth", "thirty_second",
 ]);
 
 /**

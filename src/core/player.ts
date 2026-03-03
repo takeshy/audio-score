@@ -9,6 +9,8 @@ import { midiToFrequency } from "./musicTheory";
 export interface PlaybackHandle {
   stop(): void;
   finished: Promise<void>;
+  /** Returns elapsed playback time in seconds. */
+  getElapsed(): number;
 }
 
 /**
@@ -130,5 +132,10 @@ export function playScore(score: ScoreData): PlaybackHandle {
     resolveFinished?.();
   }
 
-  return { stop, finished };
+  function getElapsed(): number {
+    if (stopped) return 0;
+    return Math.max(0, ctx.currentTime - baseTime);
+  }
+
+  return { stop, finished, getElapsed };
 }

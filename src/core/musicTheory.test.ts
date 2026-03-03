@@ -104,6 +104,13 @@ describe("quantizeDuration", () => {
     expect(result.type).toBe("quarter");
     expect(result.dotted).toBe(true);
   });
+
+  it("quantizes 0.0625s at 120 BPM to thirty_second note", () => {
+    // 120 BPM → beat = 0.5s, 32nd = 0.5/8 = 0.0625s
+    const result = quantizeDuration(0.0625, 120);
+    expect(result.type).toBe("thirty_second");
+    expect(result.dotted).toBe(false);
+  });
 });
 
 describe("detectKey", () => {
@@ -156,16 +163,16 @@ describe("detectDownbeatOffset", () => {
   });
 
   it("returns the first onset when all onsets are perfectly on-grid", () => {
-    // 120 BPM → beat = 0.5s, 16th = 0.125s
+    // 120 BPM → beat = 0.5s, 32nd = 0.0625s
     // Onsets at 0.3, 0.8, 1.3 → offset should be 0.3
     const onsets = [0.3, 0.8, 1.3, 1.8];
     const offset = detectDownbeatOffset(onsets, 120);
     expect(offset).toBeCloseTo(0.3, 5);
   });
 
-  it("picks the phase that best aligns onsets to the 16th grid", () => {
-    // 120 BPM → 16th = 0.125s, step = 0.03125s
-    // True grid: 0.2, 0.325, 0.45, 0.575, 0.7, 0.825, ...
+  it("picks the phase that best aligns onsets to the 32nd grid", () => {
+    // 120 BPM → 32nd = 0.0625s
+    // True grid: 0.2, 0.2625, 0.325, 0.3875, 0.45, ...
     // Add noise so onsets aren't perfectly on-grid:
     const onsets = [0.21, 0.33, 0.58, 0.70, 0.83];
     const offset = detectDownbeatOffset(onsets, 120);
@@ -180,9 +187,9 @@ describe("detectDownbeatOffset", () => {
 });
 
 describe("quantizeStartTimes", () => {
-  it("snaps start times to the nearest 16th-note grid", () => {
-    // 120 BPM → 16th = 0.125s, offset = 0.1
-    // Grid positions: 0.1, 0.225, 0.35, 0.475, 0.6, ...
+  it("snaps start times to the nearest 32nd-note grid", () => {
+    // 120 BPM → 32nd = 0.0625s, offset = 0.1
+    // Grid positions: 0.1, 0.1625, 0.225, 0.2875, 0.35, ..., 0.6, ...
     const notes = [makeNote(0.11), makeNote(0.34), makeNote(0.62)];
     const result = quantizeStartTimes(notes, 120, 0.1);
     expect(result[0].startTime).toBeCloseTo(0.1, 5);
@@ -198,10 +205,10 @@ describe("quantizeStartTimes", () => {
   });
 
   it("works with offset = 0", () => {
-    // 120 BPM → 16th = 0.125s
+    // 120 BPM → 32nd = 0.0625s
     const notes = [makeNote(0.06), makeNote(0.49)];
     const result = quantizeStartTimes(notes, 120, 0);
-    expect(result[0].startTime).toBeCloseTo(0.0, 5);   // rounds to 0
-    expect(result[1].startTime).toBeCloseTo(0.5, 5);   // rounds to 0.5
+    expect(result[0].startTime).toBeCloseTo(0.0625, 5);  // rounds to 1st 32nd
+    expect(result[1].startTime).toBeCloseTo(0.5, 5);     // rounds to 0.5
   });
 });

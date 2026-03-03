@@ -107,24 +107,6 @@ export function MainView({ language }: MainViewProps) {
     }
   }, [score, chordAnnotations, tab, containerWidth, getColors]);
 
-  // Save image handler
-  const handleSaveImage = React.useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = tab === "canvas" ? "score.png" : "piano-roll.png";
-      a.click();
-      URL.revokeObjectURL(url);
-      setSaveMsg(i.saveImageSuccess);
-      setTimeout(() => setSaveMsg(""), 3000);
-    }, "image/png");
-  }, [tab, i]);
-
   // PDF export handler
   const handleSavePdf = React.useCallback(async () => {
     if (!score || pdfExporting) return;
@@ -166,9 +148,6 @@ export function MainView({ language }: MainViewProps) {
               {i.tabMidi}
             </button>
             <div className="audio-score-main-tab-spacer" />
-            <button className="audio-score-btn" onClick={handleSaveImage}>
-              {i.saveImage}
-            </button>
             {tab === "canvas" && (
               <button
                 className="audio-score-btn"

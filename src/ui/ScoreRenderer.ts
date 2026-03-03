@@ -13,6 +13,7 @@ import {
 } from "../types";
 import { midiToStaffPosition, getAccidental } from "../core/musicTheory";
 import type { ChordAnnotation } from "../core/aiService";
+import { BeatGroup, groupBeats, measuresToText } from "../core/scoreParser";
 
 /** Layout constants */
 const STAFF_LINE_SPACING = 10; // pixels between staff lines
@@ -40,44 +41,8 @@ const DURATION_WIDTH: Record<string, number> = {
   quarter: 1.0,
   eighth: 0.7,
   sixteenth: 0.5,
+  thirty_second: 0.35,
 };
-
-/** A beat position: one or more notes sharing the same startTime. */
-interface BeatGroup {
-  notes: DetectedNote[];
-  durationType: string;
-  dotted: boolean;
-}
-
-/** Tolerance for grouping simultaneous notes (seconds). */
-const CHORD_TOLERANCE = 0.02;
-
-/** Group measure notes into beat positions (chords share startTime). */
-function groupBeats(notes: DetectedNote[]): BeatGroup[] {
-  if (notes.length === 0) return [];
-  const sorted = [...notes].sort((a, b) => a.startTime - b.startTime);
-  const groups: BeatGroup[] = [];
-  let cur: DetectedNote[] = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    if (Math.abs(sorted[i].startTime - cur[0].startTime) <= CHORD_TOLERANCE) {
-      cur.push(sorted[i]);
-    } else {
-      groups.push({
-        notes: cur,
-        durationType: cur[0].durationType,
-        dotted: cur[0].dotted,
-      });
-      cur = [notes[i]];
-    }
-  }
-  groups.push({
-    notes: cur,
-    durationType: cur[0].durationType,
-    dotted: cur[0].dotted,
-  });
-  return groups;
-}
 
 /** Compute the width a beat group occupies in pixels given a base unit. */
 function beatWidth(bg: BeatGroup, unit: number): number {
@@ -137,11 +102,11 @@ export interface SystemLayout {
 }
 
 /**
- * Minimum noteUnit so the smallest note (sixteenth = 0.5 units) still
+ * Minimum noteUnit so the smallest note (thirty_second = 0.35 units) still
  * occupies enough pixels for a note head + accidental + padding.
- * MIN_NOTE_PX / smallest duration width = 24 / 0.5 = 48.
+ * MIN_NOTE_PX / smallest duration width = 24 / 0.35 ≈ 69.
  */
-const MIN_NOTE_UNIT = 48;
+const MIN_NOTE_UNIT = 69;
 
 function layoutSystems(
   score: ScoreData,
@@ -592,8 +557,8 @@ function drawStemForGroup(
     ctx.stroke();
 
     // Flags at stem tip
-    if (bg.durationType === "eighth" || bg.durationType === "sixteenth") {
-      const numFlags = bg.durationType === "sixteenth" ? 2 : 1;
+    if (bg.durationType === "eighth" || bg.durationType === "sixteenth" || bg.durationType === "thirty_second") {
+      const numFlags = bg.durationType === "thirty_second" ? 3 : bg.durationType === "sixteenth" ? 2 : 1;
       // drawFlags expects the note Y that the stem was drawn from
       const flagNoteY = stemUp ? minY : maxY;
       drawFlags(ctx, x, flagNoteY, stemUp, numFlags, color);
@@ -833,28 +798,15 @@ function drawChordName(
  * Generate a text summary of the score for export.
  */
 export function scoreToText(score: ScoreData): string {
-  const lines: string[] = [];
-  lines.push(`BPM: ${score.bpm}`);
-  lines.push(`Key: ${score.key.root} ${score.key.mode}`);
-  lines.push(`Time: ${score.beatsPerMeasure}/${score.beatUnit}`);
-  lines.push(`Clef: ${score.clef}`);
-  lines.push(`Measures: ${score.measures.length}`);
-  lines.push(`Duration: ${score.totalDuration.toFixed(1)}s`);
-  lines.push("");
+  const header = [
+    `BPM: ${score.bpm}`,
+    `Key: ${score.key.root} ${score.key.mode}`,
+    `Time: ${score.beatsPerMeasure}/${score.beatUnit}`,
+    `Clef: ${score.clef}`,
+    `Measures: ${score.measures.length}`,
+    `Duration: ${score.totalDuration.toFixed(1)}s`,
+    "",
+  ].join("\n");
 
-  for (const measure of score.measures) {
-    const beats = groupBeats(measure.notes);
-    const tokens = beats.map((bg) => {
-      const dot = bg.dotted ? "." : "";
-      if (bg.notes.length === 1) {
-        return `${bg.notes[0].name}${dot}(${bg.durationType})`;
-      }
-      // Chord: [C4,E4,G4](quarter)
-      const names = bg.notes.map((n) => n.name).join(",");
-      return `[${names}]${dot}(${bg.durationType})`;
-    });
-    lines.push(`M${measure.number}: ${tokens.join(" ")}`);
-  }
-
-  return lines.join("\n");
+  return header + "\n" + measuresToText(score.measures);
 }

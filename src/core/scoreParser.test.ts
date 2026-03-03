@@ -129,4 +129,16 @@ describe("parseScoreText", () => {
     expect(m1.notes[1].dotted).toBe(true);
     expect(m1.notes[0].durationType).toBe("half");
   });
+
+  it("parses thirty_second note duration", () => {
+    const text = `BPM: 120\nKey: C major\nTime: 4/4\nClef: treble\nMeasures: 1\nDuration: 1.0s\n\nM1: C4(thirty_second) D4(thirty_second)`;
+    const score = parseScoreText(text);
+    const m1 = score!.measures[0];
+    expect(m1.notes).toHaveLength(2);
+    expect(m1.notes[0].durationType).toBe("thirty_second");
+    expect(m1.notes[1].durationType).toBe("thirty_second");
+    // At 120 BPM: 32nd note = 0.0625s
+    expect(m1.notes[0].startTime).toBeCloseTo(0, 5);
+    expect(m1.notes[1].startTime).toBeCloseTo(0.0625, 3);
+  });
 });

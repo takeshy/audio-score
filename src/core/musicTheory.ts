@@ -102,7 +102,7 @@ export function quantizeDuration(
 
   // Candidate durations in beats: plain and dotted
   const candidates: Array<{ type: DurationType; dotted: boolean; beats: number }> = [];
-  const types: DurationType[] = ["whole", "half", "quarter", "eighth", "sixteenth"];
+  const types: DurationType[] = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second"];
   for (const t of types) {
     const b = DURATION_BEATS[t];
     candidates.push({ type: t, dotted: false, beats: b });
@@ -230,7 +230,7 @@ export function detectDownbeatOffset(
   if (onsetTimes.length === 0) return 0;
 
   const beatDuration = 60 / bpm;
-  const subdivision = beatDuration / 4; // 16th-note grid
+  const subdivision = beatDuration / 8; // 32nd-note grid
 
   // Each onset implies a phase = onset mod subdivision
   let bestPhase = 0;
@@ -256,7 +256,7 @@ export function detectDownbeatOffset(
 }
 
 /**
- * Snap every note's startTime to the nearest 16th-note grid position.
+ * Snap every note's startTime to the nearest 32nd-note grid position.
  */
 export function quantizeStartTimes(
   notes: DetectedNote[],
@@ -264,7 +264,7 @@ export function quantizeStartTimes(
   offset: number,
 ): DetectedNote[] {
   const beatDuration = 60 / bpm;
-  const subdivision = beatDuration / 4; // 16th-note
+  const subdivision = beatDuration / 8; // 32nd-note
 
   return notes.map((note) => {
     const gridUnits = (note.startTime - offset) / subdivision;

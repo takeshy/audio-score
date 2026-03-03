@@ -6,16 +6,18 @@
 import * as React from "react";
 import { ScoreData } from "./types";
 import { ChordAnnotation } from "./core/aiService";
+import type { PlaybackHandle } from "./core/player";
 
 export interface StoreState {
   score: ScoreData | null;
   chordAnnotations: ChordAnnotation[];
   fileName: string;
+  playbackHandle: PlaybackHandle | null;
 }
 
 type Listener = (state: StoreState) => void;
 
-let state: StoreState = { score: null, chordAnnotations: [], fileName: "" };
+let state: StoreState = { score: null, chordAnnotations: [], fileName: "", playbackHandle: null };
 const listeners = new Set<Listener>();
 
 export function getState(): StoreState {

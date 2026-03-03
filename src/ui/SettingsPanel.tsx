@@ -102,6 +102,16 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
           <option value={4}>4</option>
           <option value={8}>8</option>
         </select>
+
+        <label>{i.minAmplitude}</label>
+        <input
+          type="number"
+          value={settings.minAmplitude}
+          min={0}
+          max={1}
+          step={0.01}
+          onChange={(e) => update("minAmplitude", Number(e.target.value))}
+        />
       </div>
 
       <div className="audio-score-settings-actions">

@@ -41,6 +41,7 @@ export function buildScoreFromNotes(
   let filtered = notes
     .filter((n) => n.midi >= range.min && n.midi <= range.max)
     .filter((n) => n.duration >= settings.minNoteDuration)
+    .filter((n) => settings.minAmplitude <= 0 || n.amplitude >= settings.minAmplitude)
     .sort((a, b) => a.startTime - b.startTime);
 
   if (filtered.length === 0) {

@@ -24,7 +24,8 @@ export type DurationType =
   | "half"
   | "quarter"
   | "eighth"
-  | "sixteenth";
+  | "sixteenth"
+  | "thirty_second";
 
 /** Duration type to beat ratio (in quarter-note beats) */
 export const DURATION_BEATS: Record<DurationType, number> = {
@@ -33,6 +34,7 @@ export const DURATION_BEATS: Record<DurationType, number> = {
   quarter: 1,
   eighth: 0.5,
   sixteenth: 0.25,
+  thirty_second: 0.125,
 };
 
 /** A measure containing notes */
@@ -115,17 +117,20 @@ export interface AnalysisSettings {
   bpmOverride: number;
   /** Pitch range filter */
   pitchRange: PitchRange;
+  /** Minimum amplitude threshold (0 = off) */
+  minAmplitude: number;
 }
 
 /** Default analysis settings */
 export const DEFAULT_SETTINGS: AnalysisSettings = {
   onsetThreshold: 0.5,
   frameThreshold: 0.3,
-  minNoteDuration: 0.05,
+  minNoteDuration: 0.03,
   beatsPerMeasure: 4,
   beatUnit: 4,
   bpmOverride: 0,
   pitchRange: "all",
+  minAmplitude: 0,
 };
 
 /** Analysis pipeline progress */
