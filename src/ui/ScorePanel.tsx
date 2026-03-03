@@ -13,6 +13,7 @@ import { playScore, PlaybackHandle } from "../core/player";
 import {
   ChordAnnotation,
   analyzeChords,
+  improveScore,
   convertToMusicXML,
 } from "../core/aiService";
 import { setState } from "../store";
@@ -62,6 +63,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const [aiMessage, setAiMessage] = React.useState("");
   const [aiError, setAiError] = React.useState("");
   const [chordAnnotations, setChordAnnotations] = React.useState<ChordAnnotation[]>([]);
+  const [aiProgress, setAiProgress] = React.useState<{ completed: number; total: number; stage?: string } | null>(null);
 
   const playbackRef = React.useRef<PlaybackHandle | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -269,6 +271,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     if (playing && playbackRef.current) {
       playbackRef.current.stop();
       playbackRef.current = null;
+      setState({ playbackHandle: null });
       setPlaying(false);
       return;
     }
@@ -277,10 +280,12 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
     const handle = playScore(score);
     playbackRef.current = handle;
+    setState({ playbackHandle: handle });
     setPlaying(true);
 
     handle.finished.then(() => {
       playbackRef.current = null;
+      setState({ playbackHandle: null });
       setPlaying(false);
     });
   }, [playing, score]);
@@ -322,6 +327,38 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       showAiError(err);
     } finally {
       setAiLoading("");
+    }
+  }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
+
+  /**
+   * AI: Improve score (remove ML artifacts)
+   */
+  const handleAiImprove = React.useCallback(async () => {
+    if (!score || aiLoading) return;
+    setAiLoading("improve");
+    setAiError("");
+    setAiProgress(null);
+    try {
+      const improved = await improveScore(api.gemini, score, (completed, total, stage) => {
+        setAiProgress({ completed, total, stage });
+      });
+      if (improved) {
+        setScore(improved);
+        setChordAnnotations(improved.chordAnnotations ?? []);
+
+        const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
+        const improvedName = `${baseName}_improved`;
+        const json = JSON.stringify(improved);
+        saveTemporary(`${improvedName}.json`, json).catch(() => {});
+        api.drive.createFile(`${improvedName}.audioscore`, json).catch(() => {});
+
+        showAiSuccess(i.aiImproveSuccess);
+      }
+    } catch (err) {
+      showAiError(err);
+    } finally {
+      setAiLoading("");
+      setAiProgress(null);
     }
   }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
 
@@ -495,12 +532,34 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                     {aiLoading === "chords" ? i.aiChordsLoading : i.aiChords}
                   </button>
                   <button
+                    className={`audio-score-btn${aiLoading === "improve" ? " is-loading" : ""}`}
+                    onClick={handleAiImprove}
+                    disabled={!!aiLoading}
+                  >
+                    {aiLoading === "improve" ? i.aiImproveLoading : i.aiImprove}
+                  </button>
+                  <button
                     className="audio-score-btn"
                     onClick={handleMusicXML}
                   >
                     {i.aiMusicXML}
                   </button>
                 </div>
+                {aiLoading === "improve" && aiProgress && (
+                  <div className="audio-score-progress">
+                    <div className="audio-score-progress-bar">
+                      <div
+                        className="audio-score-progress-fill"
+                        style={{ width: aiProgress.stage === "filter" ? "5%" : `${(aiProgress.completed / aiProgress.total) * 100}%` }}
+                      />
+                    </div>
+                    <span className="audio-score-progress-label">
+                      {aiProgress.stage === "filter"
+                        ? i.aiImproveFiltering
+                        : `${aiProgress.completed}/${aiProgress.total}`}
+                    </span>
+                  </div>
+                )}
                 {aiMessage && <div className="audio-score-ai-msg">{aiMessage}</div>}
                 {aiError && <div className="audio-score-ai-error">{aiError}</div>}
               </div>

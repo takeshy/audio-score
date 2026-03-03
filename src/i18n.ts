@@ -37,6 +37,7 @@ export interface Translations {
   pitchRangeAll: string;
   pitchRangeCutBass: string;
   pitchRangeMelody: string;
+  minAmplitude: string;
   resetDefaults: string;
   save: string;
   cancel: string;
@@ -47,9 +48,7 @@ export interface Translations {
   // Current file
   currentFile: string;
   analyzeCurrentFile: string;
-  // Playback & image
-  saveImage: string;
-  saveImageSuccess: string;
+  // Playback
   play: string;
   stop: string;
   // AI features
@@ -70,6 +69,10 @@ export interface Translations {
   aiSimplifySuccess: string;
   aiMusicXML: string;
   aiMusicXMLSuccess: string;
+  aiImprove: string;
+  aiImproveLoading: string;
+  aiImproveFiltering: string;
+  aiImproveSuccess: string;
   aiError: string;
   // PDF export
   savePdf: string;
@@ -116,6 +119,7 @@ const en: Translations = {
   pitchRangeAll: "All (full range)",
   pitchRangeCutBass: "Cut Bass (C3+)",
   pitchRangeMelody: "Melody Only (C4–C7)",
+  minAmplitude: "Min Amplitude (0 = off)",
   resetDefaults: "Reset to Defaults",
   save: "Save",
   cancel: "Cancel",
@@ -124,8 +128,6 @@ const en: Translations = {
   errorNoAudio: "Please load an audio file first",
   currentFile: "Current file",
   analyzeCurrentFile: "Analyze",
-  saveImage: "Save Image",
-  saveImageSuccess: "Image saved",
   play: "Play",
   stop: "Stop",
   aiSection: "AI Features",
@@ -145,6 +147,10 @@ const en: Translations = {
   aiSimplifySuccess: "Score simplified",
   aiMusicXML: "MusicXML",
   aiMusicXMLSuccess: "MusicXML downloaded",
+  aiImprove: "Improve",
+  aiImproveLoading: "Improving...",
+  aiImproveFiltering: "Filtering artifacts...",
+  aiImproveSuccess: "Score improved",
   aiError: "AI processing failed",
   savePdf: "PDF",
   savePdfSuccess: "PDF saved",
@@ -189,6 +195,7 @@ const ja: Translations = {
   pitchRangeAll: "全帯域",
   pitchRangeCutBass: "低音カット (C3以上)",
   pitchRangeMelody: "メロディのみ (C4〜C7)",
+  minAmplitude: "最小振幅 (0 = 無効)",
   resetDefaults: "デフォルトに戻す",
   save: "保存",
   cancel: "キャンセル",
@@ -197,8 +204,6 @@ const ja: Translations = {
   errorNoAudio: "先に音声ファイルを読み込んでください",
   currentFile: "現在のファイル",
   analyzeCurrentFile: "解析",
-  saveImage: "画像を保存",
-  saveImageSuccess: "画像を保存しました",
   play: "再生",
   stop: "停止",
   aiSection: "AI 機能",
@@ -218,6 +223,10 @@ const ja: Translations = {
   aiSimplifySuccess: "楽譜を簡略化しました",
   aiMusicXML: "MusicXML",
   aiMusicXMLSuccess: "MusicXML をダウンロードしました",
+  aiImprove: "改善",
+  aiImproveLoading: "改善中...",
+  aiImproveFiltering: "アーティファクト除去中...",
+  aiImproveSuccess: "楽譜を改善しました",
   aiError: "AI 処理に失敗しました",
   savePdf: "PDF",
   savePdfSuccess: "PDF を保存しました",
