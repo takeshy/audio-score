@@ -1,12 +1,13 @@
 {
   "name": "hub-audio-score",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Audio to sheet music plugin for GemiHub - ML-based pitch detection with staff notation rendering",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "test": "vitest run"
+    "test": "vitest run",
+    "version": "node -e \"const m=require('./manifest.json');m.version=require('./package.json').version;require('fs').writeFileSync('manifest.json',JSON.stringify(m,null,2)+'\\n')\" && git add manifest.json"
   },
   "keywords": [
     "gemihub",
