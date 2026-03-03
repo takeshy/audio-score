@@ -15,6 +15,8 @@ import {
   detectKey,
   chooseClef,
   splitIntoMeasures,
+  detectDownbeatOffset,
+  quantizeStartTimes,
 } from "./musicTheory";
 
 /**
@@ -68,6 +70,10 @@ export function buildScoreFromNotes(
 
   const bpm = settings.bpmOverride > 0 ? settings.bpmOverride : detectBPM(deduped);
 
+  // Detect downbeat offset and quantize start times to beat grid
+  const downbeatOffset = detectDownbeatOffset(deduped, bpm);
+  filtered = quantizeStartTimes(filtered, bpm, downbeatOffset);
+
   // Quantize durations
   filtered = quantizeNotes(filtered, bpm);
 
@@ -79,7 +85,7 @@ export function buildScoreFromNotes(
   const clef = chooseClef(midiNotes);
 
   // Split into measures
-  const measures = splitIntoMeasures(filtered, bpm, settings.beatsPerMeasure);
+  const measures = splitIntoMeasures(filtered, bpm, settings.beatsPerMeasure, downbeatOffset);
 
   // Total duration
   const lastNote = filtered[filtered.length - 1];
@@ -93,6 +99,7 @@ export function buildScoreFromNotes(
     clef,
     measures,
     totalDuration,
+    downbeatOffset,
     pitchRange: settings.pitchRange,
   };
 }

@@ -8,7 +8,10 @@ import {
   quantizeDuration,
   detectKey,
   chooseClef,
+  detectDownbeatOffset,
+  quantizeStartTimes,
 } from "./musicTheory";
+import { DetectedNote } from "../types";
 
 describe("frequencyToMidi / midiToFrequency", () => {
   it("A4 = 440Hz = MIDI 69", () => {
@@ -130,5 +133,75 @@ describe("chooseClef", () => {
 
   it("defaults to treble for empty input", () => {
     expect(chooseClef([])).toBe("treble");
+  });
+});
+
+/** Helper to build a minimal DetectedNote for testing */
+function makeNote(startTime: number, midi: number = 60): DetectedNote {
+  return {
+    midi,
+    name: "C4",
+    startTime,
+    duration: 0.5,
+    durationType: "quarter",
+    dotted: false,
+    frequency: 261.63,
+    amplitude: 0.8,
+  };
+}
+
+describe("detectDownbeatOffset", () => {
+  it("returns 0 for empty onsets", () => {
+    expect(detectDownbeatOffset([], 120)).toBe(0);
+  });
+
+  it("returns the first onset when all onsets are perfectly on-grid", () => {
+    // 120 BPM → beat = 0.5s, 16th = 0.125s
+    // Onsets at 0.3, 0.8, 1.3 → offset should be 0.3
+    const onsets = [0.3, 0.8, 1.3, 1.8];
+    const offset = detectDownbeatOffset(onsets, 120);
+    expect(offset).toBeCloseTo(0.3, 5);
+  });
+
+  it("picks the phase that best aligns onsets to the 16th grid", () => {
+    // 120 BPM → 16th = 0.125s, step = 0.03125s
+    // True grid: 0.2, 0.325, 0.45, 0.575, 0.7, 0.825, ...
+    // Add noise so onsets aren't perfectly on-grid:
+    const onsets = [0.21, 0.33, 0.58, 0.70, 0.83];
+    const offset = detectDownbeatOffset(onsets, 120);
+    // The best offset should be near 0.2 (within one step = 0.03125)
+    expect(Math.abs(offset - 0.2)).toBeLessThan(0.04);
+  });
+
+  it("returns first onset for a single onset", () => {
+    const offset = detectDownbeatOffset([0.42], 100);
+    expect(offset).toBeCloseTo(0.42, 5);
+  });
+});
+
+describe("quantizeStartTimes", () => {
+  it("snaps start times to the nearest 16th-note grid", () => {
+    // 120 BPM → 16th = 0.125s, offset = 0.1
+    // Grid positions: 0.1, 0.225, 0.35, 0.475, 0.6, ...
+    const notes = [makeNote(0.11), makeNote(0.34), makeNote(0.62)];
+    const result = quantizeStartTimes(notes, 120, 0.1);
+    expect(result[0].startTime).toBeCloseTo(0.1, 5);
+    expect(result[1].startTime).toBeCloseTo(0.35, 5);
+    expect(result[2].startTime).toBeCloseTo(0.6, 5);
+  });
+
+  it("preserves other note properties", () => {
+    const notes = [makeNote(0.13, 72)];
+    const result = quantizeStartTimes(notes, 120, 0.1);
+    expect(result[0].midi).toBe(72);
+    expect(result[0].duration).toBe(0.5);
+  });
+
+  it("works with offset = 0", () => {
+    // 120 BPM → 16th = 0.125s
+    const notes = [makeNote(0.06), makeNote(0.49)];
+    const result = quantizeStartTimes(notes, 120, 0);
+    expect(result[0].startTime).toBeCloseTo(0.0, 5);   // rounds to 0
+    expect(result[1].startTime).toBeCloseTo(0.5, 5);   // rounds to 0.5
   });
 });

@@ -217,12 +217,70 @@ export function chooseClef(midiNotes: number[]): ClefType {
 }
 
 /**
+ * Detect the downbeat offset — the time of the first beat in the audio.
+ * Each onset implies a candidate grid phase (onset mod subdivision).
+ * We test every onset's phase and pick the one that minimises the
+ * sum-of-squared residuals across all onsets, then snap the first onset
+ * to that grid to produce the downbeat position.
+ */
+export function detectDownbeatOffset(
+  onsetTimes: number[],
+  bpm: number,
+): number {
+  if (onsetTimes.length === 0) return 0;
+
+  const beatDuration = 60 / bpm;
+  const subdivision = beatDuration / 4; // 16th-note grid
+
+  // Each onset implies a phase = onset mod subdivision
+  let bestPhase = 0;
+  let bestError = Infinity;
+
+  for (const candidate of onsetTimes) {
+    const phase = ((candidate % subdivision) + subdivision) % subdivision;
+    let error = 0;
+    for (const t of onsetTimes) {
+      const gridUnits = (t - phase) / subdivision;
+      const residual = gridUnits - Math.round(gridUnits);
+      error += residual * residual;
+    }
+    if (error < bestError) {
+      bestError = error;
+      bestPhase = phase;
+    }
+  }
+
+  // Snap the first onset to the winning grid
+  const gridUnits = (onsetTimes[0] - bestPhase) / subdivision;
+  return Math.round(gridUnits) * subdivision + bestPhase;
+}
+
+/**
+ * Snap every note's startTime to the nearest 16th-note grid position.
+ */
+export function quantizeStartTimes(
+  notes: DetectedNote[],
+  bpm: number,
+  offset: number,
+): DetectedNote[] {
+  const beatDuration = 60 / bpm;
+  const subdivision = beatDuration / 4; // 16th-note
+
+  return notes.map((note) => {
+    const gridUnits = (note.startTime - offset) / subdivision;
+    const snapped = Math.round(gridUnits) * subdivision + offset;
+    return { ...note, startTime: snapped };
+  });
+}
+
+/**
  * Split notes into measures based on BPM and time signature.
  */
 export function splitIntoMeasures(
   notes: DetectedNote[],
   bpm: number,
-  beatsPerMeasure: number
+  beatsPerMeasure: number,
+  downbeatOffset: number = 0,
 ): Measure[] {
   if (notes.length === 0) return [];
 
@@ -231,7 +289,7 @@ export function splitIntoMeasures(
   const measures: Measure[] = [];
 
   let currentMeasure: DetectedNote[] = [];
-  let measureStart = 0;
+  let measureStart = downbeatOffset;
   let measureNum = 1;
 
   for (const note of notes) {

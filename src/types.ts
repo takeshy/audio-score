@@ -83,6 +83,8 @@ export interface ScoreData {
   totalDuration: number;
   /** Chord annotations (optional, from AI analysis) */
   chordAnnotations?: ChordAnnotation[];
+  /** Downbeat offset in seconds (time of the first beat) */
+  downbeatOffset?: number;
   /** Pitch range filter used during analysis */
   pitchRange?: PitchRange;
 }
