@@ -78,8 +78,6 @@ export interface Translations {
   savePdf: string;
   savePdfSuccess: string;
   // Main view
-  tabCanvas: string;
-  tabMidi: string;
   mainViewEmpty: string;
 }
 
@@ -154,8 +152,6 @@ const en: Translations = {
   aiError: "AI processing failed",
   savePdf: "PDF",
   savePdfSuccess: "PDF saved",
-  tabCanvas: "Score",
-  tabMidi: "Piano Roll",
   mainViewEmpty: "Load an audio file from the sidebar",
 };
 
@@ -230,8 +226,6 @@ const ja: Translations = {
   aiError: "AI 処理に失敗しました",
   savePdf: "PDF",
   savePdfSuccess: "PDF を保存しました",
-  tabCanvas: "楽譜",
-  tabMidi: "ピアノロール",
   mainViewEmpty: "サイドバーから音声ファイルを読み込んでください",
 };
 
