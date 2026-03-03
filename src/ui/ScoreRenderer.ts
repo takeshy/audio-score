@@ -131,7 +131,7 @@ export function calculateSize(
   return { width: canvasWidth, height };
 }
 
-interface SystemLayout {
+export interface SystemLayout {
   measures: Measure[];
   y: number; // top of staff
 }
@@ -208,6 +208,37 @@ function layoutSystems(
   const canvasWidth = Math.max(viewWidth, maxSystemWidth);
 
   return { systems, noteUnit, canvasWidth };
+}
+
+/**
+ * Expose layout information for external consumers (e.g. PDF export).
+ */
+export function getSystemLayouts(
+  score: ScoreData,
+  opts: RenderOptions,
+): {
+  systems: SystemLayout[];
+  noteUnit: number;
+  canvasWidth: number;
+  staffHeight: number;
+  systemGap: number;
+  topMargin: number;
+  bottomMargin: number;
+} {
+  const fullOpts = { ...DEFAULT_OPTIONS, ...opts };
+  const hasChords = fullOpts.chordAnnotations && fullOpts.chordAnnotations.length > 0;
+  const topM = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const sysGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
+  const { systems, noteUnit, canvasWidth } = layoutSystems(score, fullOpts, topM, sysGap);
+  return {
+    systems,
+    noteUnit,
+    canvasWidth,
+    staffHeight: STAFF_HEIGHT,
+    systemGap: sysGap,
+    topMargin: topM,
+    bottomMargin: BOTTOM_MARGIN,
+  };
 }
 
 /**

@@ -7,6 +7,7 @@ import * as React from "react";
 import { useStore } from "../store";
 import { renderScore, calculateSize, RenderOptions } from "./ScoreRenderer";
 import { renderPianoRoll, calculatePianoRollSize, PianoRollOptions } from "./PianoRollRenderer";
+import { exportScorePdf } from "./pdfExport";
 import { t } from "../i18n";
 
 interface MainViewProps {
@@ -17,10 +18,11 @@ type Tab = "canvas" | "midi";
 
 export function MainView({ language }: MainViewProps) {
   const i = t(language);
-  const { score, chordAnnotations } = useStore();
+  const { score, chordAnnotations, fileName } = useStore();
 
   const [tab, setTab] = React.useState<Tab>("canvas");
   const [saveMsg, setSaveMsg] = React.useState("");
+  const [pdfExporting, setPdfExporting] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [containerWidth, setContainerWidth] = React.useState(800);
@@ -123,6 +125,26 @@ export function MainView({ language }: MainViewProps) {
     }, "image/png");
   }, [tab, i]);
 
+  // PDF export handler
+  const handleSavePdf = React.useCallback(async () => {
+    if (!score || pdfExporting) return;
+    setPdfExporting(true);
+    try {
+      const title = fileName
+        ? fileName.replace(/\.[^.]+$/, "")
+        : "Score";
+      await exportScorePdf(score, title, chordAnnotations);
+      setSaveMsg(i.savePdfSuccess);
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSaveMsg(`PDF export failed: ${msg}`);
+      setTimeout(() => setSaveMsg(""), 5000);
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [score, fileName, chordAnnotations, i, pdfExporting]);
+
   return (
     <div className="audio-score-main" ref={containerRef}>
       {!score ? (
@@ -147,6 +169,15 @@ export function MainView({ language }: MainViewProps) {
             <button className="audio-score-btn" onClick={handleSaveImage}>
               {i.saveImage}
             </button>
+            {tab === "canvas" && (
+              <button
+                className="audio-score-btn"
+                onClick={handleSavePdf}
+                disabled={pdfExporting}
+              >
+                {i.savePdf}
+              </button>
+            )}
             {saveMsg && <span className="audio-score-export-msg">{saveMsg}</span>}
           </div>
 

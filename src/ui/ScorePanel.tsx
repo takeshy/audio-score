@@ -126,9 +126,10 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     };
   }, [score]);
 
-  // Sync score and chordAnnotations to shared store for main view
+  // Sync score, chordAnnotations, and fileName to shared store for main view
   React.useEffect(() => { setState({ score }); }, [score]);
   React.useEffect(() => { setState({ chordAnnotations }); }, [chordAnnotations]);
+  React.useEffect(() => { setState({ fileName }); }, [fileName]);
 
   const progressLabel = (p: AnalysisProgress): string => {
     const labels: Record<AnalysisProgress["stage"], string> = {

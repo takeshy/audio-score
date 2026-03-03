@@ -10,11 +10,12 @@ import { ChordAnnotation } from "./core/aiService";
 export interface StoreState {
   score: ScoreData | null;
   chordAnnotations: ChordAnnotation[];
+  fileName: string;
 }
 
 type Listener = (state: StoreState) => void;
 
-let state: StoreState = { score: null, chordAnnotations: [] };
+let state: StoreState = { score: null, chordAnnotations: [], fileName: "" };
 const listeners = new Set<Listener>();
 
 export function getState(): StoreState {

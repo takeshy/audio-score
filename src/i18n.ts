@@ -71,6 +71,9 @@ export interface Translations {
   aiMusicXML: string;
   aiMusicXMLSuccess: string;
   aiError: string;
+  // PDF export
+  savePdf: string;
+  savePdfSuccess: string;
   // Main view
   tabCanvas: string;
   tabMidi: string;
@@ -143,6 +146,8 @@ const en: Translations = {
   aiMusicXML: "MusicXML",
   aiMusicXMLSuccess: "MusicXML downloaded",
   aiError: "AI processing failed",
+  savePdf: "PDF",
+  savePdfSuccess: "PDF saved",
   tabCanvas: "Score",
   tabMidi: "Piano Roll",
   mainViewEmpty: "Load an audio file from the sidebar",
@@ -214,6 +219,8 @@ const ja: Translations = {
   aiMusicXML: "MusicXML",
   aiMusicXMLSuccess: "MusicXML をダウンロードしました",
   aiError: "AI 処理に失敗しました",
+  savePdf: "PDF",
+  savePdfSuccess: "PDF を保存しました",
   tabCanvas: "楽譜",
   tabMidi: "ピアノロール",
   mainViewEmpty: "サイドバーから音声ファイルを読み込んでください",

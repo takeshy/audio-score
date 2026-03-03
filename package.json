@@ -32,6 +32,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@spotify/basic-pitch": "^1.0.1"
+    "@spotify/basic-pitch": "^1.0.1",
+    "jspdf": "^2.5.2"
   }
 }
