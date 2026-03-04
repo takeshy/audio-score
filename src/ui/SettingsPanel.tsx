@@ -3,7 +3,7 @@
  */
 
 import * as React from "react";
-import { AnalysisSettings, DEFAULT_SETTINGS, StemName } from "../types";
+import { AnalysisSettings, DEFAULT_SETTINGS } from "../types";
 import { t } from "../i18n";
 
 interface PluginAPI {
@@ -37,8 +37,6 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
   const update = (key: keyof AnalysisSettings, value: number | boolean | string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
-
-  const STEMS: StemName[] = ["drums", "bass", "other", "vocals", "guitar", "piano"];
 
   const handleSave = async () => {
     await api.storage.set("analysisSettings", settings);
@@ -114,31 +112,6 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
           step={0.01}
           onChange={(e) => update("minAmplitude", Number(e.target.value))}
         />
-      </div>
-
-      <div className="audio-score-settings-section">
-        <label className="audio-score-settings-checkbox-label">
-          <input
-            type="checkbox"
-            checked={settings.enableSourceSeparation}
-            onChange={(e) => update("enableSourceSeparation", e.target.checked)}
-          />
-          {i.sourceSeparation}
-        </label>
-        {settings.enableSourceSeparation && (
-          <div className="audio-score-settings-grid" style={{ marginTop: 8 }}>
-            <label>{i.separationStem}</label>
-            <select
-              value={settings.separationStem}
-              onChange={(e) => update("separationStem", e.target.value as StemName)}
-            >
-              {STEMS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-        )}
-        <p className="audio-score-settings-hint">{i.sourceSeparationHint}</p>
       </div>
 
       <div className="audio-score-settings-actions">

@@ -4,9 +4,9 @@
  */
 
 import * as React from "react";
-import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, PitchRange } from "../types";
+import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, StemName } from "../types";
 import { detectPitchBasicPitch } from "../core/basicPitchDetector";
-import { separateStem } from "../core/demucsService";
+import { separateAll, STEM_NAMES } from "../core/demucsService";
 import { buildScoreFromNotes } from "../core/noteSegmenter";
 import { t } from "../i18n";
 import { saveTemporary } from "../storage/idb";
@@ -47,7 +47,38 @@ interface ScorePanelProps {
   fileName?: string;
 }
 
-type Phase = "idle" | "loading" | "analyzing" | "done" | "error";
+type Phase = "idle" | "loading" | "loaded" | "analyzing" | "done" | "error";
+
+const DEFAULT_ANALYSIS_STEM: StemName = "piano";
+
+/** Encode an AudioBuffer to a 16-bit stereo WAV Blob. */
+function audioBufferToWav(buf: AudioBuffer): Blob {
+  const ch0 = buf.getChannelData(0);
+  const ch1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : ch0;
+  const n = buf.length;
+  const ab = new ArrayBuffer(44 + n * 4);
+  const v = new DataView(ab);
+  const w = (p: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(p + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 4, true);
+  w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+  v.setUint32(24, buf.sampleRate, true); v.setUint32(28, buf.sampleRate * 4, true);
+  v.setUint16(32, 4, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, n * 4, true);
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    v.setInt16(off, Math.round(Math.max(-1, Math.min(1, ch0[i])) * 32767), true); off += 2;
+    v.setInt16(off, Math.round(Math.max(-1, Math.min(1, ch1[i])) * 32767), true); off += 2;
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+function downloadBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ScorePanel({ api, language, fileId: activeFileId, fileName: activeFileName }: ScorePanelProps) {
   const i = t(language ?? api.language);
@@ -60,7 +91,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const [settings, setSettings] = React.useState<AnalysisSettings>(DEFAULT_SETTINGS);
   const [playing, setPlaying] = React.useState(false);
   const [bpmInput, setBpmInput] = React.useState("");
-  const [pitchRange, setPitchRange] = React.useState<PitchRange>("all");
 
   // AI state
   const [aiLoading, setAiLoading] = React.useState("");
@@ -71,6 +101,20 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
   const playbackRef = React.useRef<PlaybackHandle | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Raw decoded audio (always the original file audio)
+  const audioRef = React.useRef<AudioBuffer | null>(null);
+
+  // Demucs state: all 6 stems cached after a single separateAll() run
+  const demucsBufferRef = React.useRef<AudioBuffer | null>(null);
+  const stemBuffers = React.useRef<Map<StemName, AudioBuffer>>(new Map());
+  const [demucsStem, setDemucsStem] = React.useState<StemName | null>(null);
+  const [demucsDone, setDemucsDone] = React.useState(false);
+  const [demucsRunning, setDemucsRunning] = React.useState(false);
+  const [demucsProgress, setDemucsProgress] = React.useState(0);
+  const [demucsError, setDemucsError] = React.useState("");
+  const stemPlaybackRef = React.useRef<{ ctx: AudioContext; src: AudioBufferSourceNode } | null>(null);
+  const [stemPlaying, setStemPlaying] = React.useState(false);
 
   // Load settings on mount
   React.useEffect(() => {
@@ -132,6 +176,18 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     };
   }, [score]);
 
+  // Stop stem playback when stem selection changes
+  React.useEffect(() => {
+    return () => {
+      if (stemPlaybackRef.current) {
+        stemPlaybackRef.current.src.stop();
+        stemPlaybackRef.current.ctx.close();
+        stemPlaybackRef.current = null;
+        setStemPlaying(false);
+      }
+    };
+  }, [demucsStem]);
+
   // Sync score, chordAnnotations, and fileName to shared store for main view
   React.useEffect(() => { setState({ score }); }, [score]);
   React.useEffect(() => { setState({ chordAnnotations }); }, [chordAnnotations]);
@@ -151,123 +207,132 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   };
 
   /**
-   * Decode audio buffer and run analysis pipeline.
+   * Decode an ArrayBuffer to AudioBuffer and enter "loaded" state.
+   * Does NOT run analysis — user triggers that separately.
    */
-  const analyzeAudio = React.useCallback(
+  const decodeAudio = React.useCallback(
     async (arrayBuffer: ArrayBuffer, name: string) => {
-      setPhase("analyzing");
+      setPhase("loading");
       setError("");
       setFileName(name);
       setScore(null);
+      audioRef.current = null;
+      demucsBufferRef.current = null;
+      stemBuffers.current.clear();
+      setDemucsStem(null);
+      setDemucsDone(false);
+      setDemucsError("");
 
       const audioCtx = new AudioContext();
       try {
-        // Decode
-        setProgress({ stage: "decoding", percent: 3 });
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-        // Optional: Demucs WASM source separation (piano stem)
-        let analysisBuffer = audioBuffer;
-        if (settings.enableSourceSeparation) {
-          setProgress({ stage: "loading_demucs", percent: 3 });
-          analysisBuffer = await separateStem(
-            audioBuffer,
-            settings.separationStem,
-            (name) => api.assets.fetch(name),
-            (p) => {
-              if (p.stage === "downloading_wasm") {
-                setProgress({ stage: "loading_demucs", percent: 3 + p.percent * 0.1 });
-              } else if (p.stage === "downloading_model") {
-                setProgress({ stage: "separating", percent: 13 + p.percent * 0.35 });
-              } else if (p.stage === "initializing") {
-                setProgress({ stage: "separating", percent: 48 + p.percent * 0.07 });
-              } else {
-                setProgress({ stage: "separating", percent: 55 + p.percent * 0.1 });
-              }
-            },
-          );
-        }
-
-        // Load model & detect pitch
-        const pitchStart = settings.enableSourceSeparation ? 65 : 10;
-        setProgress({ stage: "loading_model", percent: pitchStart });
-        const notes = await detectPitchBasicPitch(
-          analysisBuffer,
-          (pct) => {
-            setProgress({ stage: "pitch", percent: pitchStart + pct * (85 - pitchStart) });
-          },
-          settings.onsetThreshold,
-          settings.frameThreshold,
-        );
-
-        // Build score
-        setProgress({ stage: "quantizing", percent: 85 });
-        await new Promise((r) => setTimeout(r, 0));
-
-        const bpmOverride = bpmInput ? parseInt(bpmInput, 10) || 0 : 0;
-        const scoreData = buildScoreFromNotes(notes, { ...settings, bpmOverride, pitchRange });
-
-        setProgress({ stage: "done", percent: 100 });
-        setScore(scoreData);
-        setPhase("done");
-
-        // Save ScoreData JSON to IndexedDB
-        const baseName = name.replace(/\.[^.]+$/, "");
-        saveTemporary(`${baseName}.json`, JSON.stringify(scoreData)).catch(() => {});
-
-        // Auto-save as .audioscore to Drive
-        const json = JSON.stringify(scoreData);
-        api.drive.createFile(`${baseName}.audioscore`, json).catch(() => {});
+        audioRef.current = audioBuffer;
+        setPhase("loaded");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        setError(`${i.errorAnalysis}: ${msg}`);
+        setError(`${i.errorDecode}: ${msg}`);
         setPhase("error");
       } finally {
         await audioCtx.close();
       }
     },
-    [settings, bpmInput, pitchRange, i, api]
+    [i],
   );
 
   /**
-   * Load the currently open audio file and analyze it.
+   * Run pitch detection and build score.
+   * Uses the Demucs-separated buffer if available, otherwise the raw audio.
    */
-  const handleCurrentFileAnalyze = React.useCallback(async () => {
-    if (!activeFileId || !activeFileName) return;
-
-    setPhase("loading");
+  const runAnalysis = React.useCallback(async () => {
+    if (!audioRef.current) return;
+    setPhase("analyzing");
     setError("");
+    setScore(null);
+    setProgress({ stage: "loading_model", percent: 10 });
+
+    const analysisBuffer = demucsBufferRef.current ?? audioRef.current;
 
     try {
-      const resp = await fetch(
-        `/api/drive/files?action=raw&fileId=${encodeURIComponent(activeFileId)}`,
+      const notes = await detectPitchBasicPitch(
+        analysisBuffer,
+        (pct) => setProgress({ stage: "pitch", percent: 10 + pct * 75 }),
+        settings.onsetThreshold,
+        settings.frameThreshold,
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-      const buf = await resp.arrayBuffer();
-      await analyzeAudio(buf, activeFileName);
+      setProgress({ stage: "quantizing", percent: 85 });
+      await new Promise((r) => setTimeout(r, 0));
+
+      const bpmOverride = bpmInput ? parseInt(bpmInput, 10) || 0 : 0;
+      const scoreData = buildScoreFromNotes(notes, { ...settings, bpmOverride });
+
+      setProgress({ stage: "done", percent: 100 });
+      setScore(scoreData);
+      setPhase("done");
+
+      const baseName = fileName.replace(/\.[^.]+$/, "");
+      saveTemporary(`${baseName}.json`, JSON.stringify(scoreData)).catch(() => {});
+      api.drive.createFile(`${baseName}.audioscore`, JSON.stringify(scoreData)).catch(() => {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`${i.errorDecode}: ${msg}`);
+      setError(`${i.errorAnalysis}: ${msg}`);
       setPhase("error");
     }
-  }, [activeFileId, activeFileName, analyzeAudio, i]);
+  }, [settings, bpmInput, i, api, fileName]);
 
   /**
-   * Handle file input change.
+   * Run Demucs separateAll to get all 6 stems at once.
+   * Default analysis stem is "piano".
+   */
+  const handleDemucsRun = React.useCallback(async () => {
+    if (!audioRef.current || demucsRunning) return;
+    setDemucsRunning(true);
+    setDemucsProgress(0);
+    setDemucsError("");
+    demucsBufferRef.current = null;
+    stemBuffers.current.clear();
+    setDemucsDone(false);
+    setDemucsStem(null);
+
+    try {
+      const all = await separateAll(
+        audioRef.current,
+        (assetName) => api.assets.fetch(assetName),
+        (p) => {
+          if (p.stage === "downloading_wasm")       setDemucsProgress(p.percent * 0.1);
+          else if (p.stage === "downloading_model") setDemucsProgress(10 + p.percent * 0.3);
+          else if (p.stage === "initializing")      setDemucsProgress(40 + p.percent * 0.1);
+          else                                      setDemucsProgress(50 + p.percent * 0.5);
+        },
+      );
+      for (const [name, buf] of Object.entries(all)) {
+        stemBuffers.current.set(name as StemName, buf);
+      }
+      setDemucsStem(DEFAULT_ANALYSIS_STEM);
+      demucsBufferRef.current = all[DEFAULT_ANALYSIS_STEM];
+      setDemucsDone(true);
+    } catch (err) {
+      setDemucsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDemucsRunning(false);
+      setDemucsProgress(0);
+    }
+  }, [demucsRunning, api.assets]);
+
+  /**
+   * Handle file input change — decode only, don't analyze yet.
    */
   const loadFile = React.useCallback(
     (file: File) => {
-      setPhase("loading");
       file.arrayBuffer().then(
-        (buf) => analyzeAudio(buf, file.name),
+        (buf) => decodeAudio(buf, file.name),
         (err) => {
           setError(`${i.errorDecode}: ${err instanceof Error ? err.message : String(err)}`);
           setPhase("error");
         }
       );
     },
-    [analyzeAudio, i]
+    [decodeAudio, i]
   );
 
   const handleFileChange = React.useCallback(
@@ -292,6 +357,29 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     e.preventDefault();
     e.stopPropagation();
   }, []);
+
+  /**
+   * Load (decode) the currently open audio file from Drive.
+   */
+  const handleCurrentFileLoad = React.useCallback(async () => {
+    if (!activeFileId || !activeFileName) return;
+
+    setPhase("loading");
+    setError("");
+
+    try {
+      const resp = await fetch(
+        `/api/drive/files?action=raw&fileId=${encodeURIComponent(activeFileId)}`,
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      await decodeAudio(buf, activeFileName);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`${i.errorDecode}: ${msg}`);
+      setPhase("error");
+    }
+  }, [activeFileId, activeFileName, decodeAudio, i]);
 
   /**
    * Toggle score playback.
@@ -343,7 +431,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       const annotations = await analyzeChords(api.gemini, score);
       setChordAnnotations(annotations);
 
-      // Save chord annotations into score and persist to .audioscore file
       const updatedScore = { ...score, chordAnnotations: annotations };
       setScore(updatedScore);
       const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
@@ -392,7 +479,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
 
   /**
-   * Convert to MusicXML and download (no AI needed).
+   * Convert to MusicXML and download.
    */
   const handleMusicXML = React.useCallback(() => {
     if (!score) return;
@@ -412,10 +499,52 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     }
   }, [score, fileName, i, showAiSuccess, showAiError]);
 
+  /**
+   * Export the selected stem as a WAV file (from cached buffers).
+   */
+  const handleStemExport = React.useCallback(() => {
+    if (!demucsStem) return;
+    const cached = stemBuffers.current.get(demucsStem);
+    if (!cached) return;
+    const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "audio";
+    downloadBlob(audioBufferToWav(cached), `${baseName}_${demucsStem}.wav`);
+  }, [fileName, demucsStem]);
+
+  /**
+   * Play/stop the selected stem audio directly.
+   */
+  const handleStemPlayStop = React.useCallback(() => {
+    if (stemPlaying && stemPlaybackRef.current) {
+      stemPlaybackRef.current.src.stop();
+      stemPlaybackRef.current.ctx.close();
+      stemPlaybackRef.current = null;
+      setStemPlaying(false);
+      return;
+    }
+    if (!demucsStem) return;
+    const buf = stemBuffers.current.get(demucsStem);
+    if (!buf) return;
+    const ctx = new AudioContext();
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
+    stemPlaybackRef.current = { ctx, src };
+    setStemPlaying(true);
+    src.onended = () => {
+      ctx.close();
+      stemPlaybackRef.current = null;
+      setStemPlaying(false);
+    };
+  }, [stemPlaying, demucsStem]);
+
   // Count total notes
   const totalNotes = score
     ? score.measures.reduce((sum, m) => sum + m.notes.length, 0)
     : 0;
+
+  // Whether audio is loaded (and we can run Demucs or Analyze)
+  const audioLoaded = phase === "loaded" || phase === "analyzing" || phase === "done";
 
   return (
     <div
@@ -438,68 +567,125 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
             onChange={handleFileChange}
             style={{ display: "none" }}
           />
+
+          <div className="audio-score-bpm-row">
+            <label className="audio-score-bpm-label">{i.bpmOverride}</label>
+            <input
+              type="number"
+              className="audio-score-bpm-input"
+              placeholder={i.bpmOverrideHint}
+              value={bpmInput}
+              min={0}
+              max={300}
+              onChange={(e) => setBpmInput(e.target.value)}
+              disabled={phase === "analyzing" || demucsRunning}
+            />
+          </div>
+
           <button
-            className="audio-score-btn mod-cta"
+            className="audio-score-btn mod-cta audio-score-load-btn"
             onClick={() => fileInputRef.current?.click()}
-            disabled={phase === "analyzing"}
+            disabled={phase === "analyzing" || demucsRunning}
           >
             {i.loadFile}
           </button>
           <p className="audio-score-hint">{i.orDragDrop}</p>
-
-          {/* BPM override & Pitch range */}
-          <div className="audio-score-bpm-section">
-            <div className="audio-score-options-row">
-              <div className="audio-score-option-group">
-                <label className="audio-score-label">{i.bpmOverride}</label>
-                <input
-                  type="number"
-                  className="audio-score-input"
-                  placeholder={i.bpmOverrideHint}
-                  value={bpmInput}
-                  min={0}
-                  max={300}
-                  onChange={(e) => setBpmInput(e.target.value)}
-                  disabled={phase === "analyzing"}
-                  style={{ width: "100px" }}
-                />
-              </div>
-              <div className="audio-score-option-group">
-                <label className="audio-score-label">{i.pitchRange}</label>
-                <select
-                  className="audio-score-input"
-                  value={pitchRange}
-                  onChange={(e) => setPitchRange(e.target.value as PitchRange)}
-                  disabled={phase === "analyzing"}
-                >
-                  <option value="all">{i.pitchRangeAll}</option>
-                  <option value="cut_bass">{i.pitchRangeCutBass}</option>
-                  <option value="melody">{i.pitchRangeMelody}</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Current audio file */}
-          {isCurrentFileAudio && (
-            <div className="audio-score-drive-section">
-              <label className="audio-score-label">{i.currentFile}</label>
-              <div className="audio-score-drive-row">
-                <span className="audio-score-current-file-name">{activeFileName}</span>
-                <button
-                  className="audio-score-btn mod-cta"
-                  onClick={handleCurrentFileAnalyze}
-                  disabled={phase === "analyzing"}
-                >
-                  {phase === "analyzing" ? i.analyzing : i.analyzeCurrentFile}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* Current audio file from Drive */}
+        {isCurrentFileAudio && (
+          <div className="audio-score-drive-card">
+            <span className="audio-score-current-file-name">{activeFileName}</span>
+            <button
+              className="audio-score-btn mod-cta"
+              onClick={handleCurrentFileLoad}
+              disabled={phase === "analyzing" || phase === "loading" || demucsRunning}
+            >
+              {phase === "loading" ? i.analyzing : i.loadAudio}
+            </button>
+          </div>
+        )}
+
+        {/* Source Separation + Analyze — shown once audio is decoded */}
+        {audioLoaded && (
+          <div className="audio-score-demucs-section">
+            {/* Primary action: Source Separation */}
+            {!demucsDone && (
+              <button
+                className={`audio-score-btn mod-cta audio-score-load-btn${demucsRunning ? " is-loading" : ""}`}
+                onClick={handleDemucsRun}
+                disabled={demucsRunning || phase === "analyzing"}
+              >
+                {demucsRunning ? i.stageSeparating : i.sourceSeparation}
+              </button>
+            )}
+            {demucsRunning && (
+              <div className="audio-score-progress">
+                <div className="audio-score-progress-bar">
+                  <div className="audio-score-progress-fill" style={{ width: `${demucsProgress}%` }} />
+                </div>
+              </div>
+            )}
+            {demucsError && <div className="audio-score-error">{demucsError}</div>}
+
+            {/* After separation: stem selector + Analyze / Download / Play */}
+            {demucsDone && (
+              <>
+                <div className="audio-score-stem-grid">
+                  {STEM_NAMES.map((stem) => (
+                    <button
+                      key={stem}
+                      className={`audio-score-stem-btn${demucsStem === stem ? " is-selected" : ""}`}
+                      onClick={() => {
+                        setDemucsStem(stem);
+                        demucsBufferRef.current = stemBuffers.current.get(stem) ?? null;
+                      }}
+                    >
+                      <span className="audio-score-stem-name">{stem}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="audio-score-demucs-actions">
+                  <button
+                    className="audio-score-btn mod-cta"
+                    onClick={runAnalysis}
+                    disabled={phase === "analyzing" || !demucsStem}
+                  >
+                    {phase === "analyzing" ? i.analyzing : i.analyze}
+                  </button>
+                  <button
+                    className="audio-score-btn"
+                    onClick={handleStemExport}
+                    disabled={!demucsStem}
+                  >
+                    {i.download}
+                  </button>
+                  <button
+                    className="audio-score-btn"
+                    onClick={handleStemPlayStop}
+                    disabled={!demucsStem}
+                  >
+                    {stemPlaying ? i.stop : i.play}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Skip separation: analyze raw audio directly */}
+            {!demucsDone && !demucsRunning && (
+              <button
+                className="audio-score-btn audio-score-analyze-secondary"
+                onClick={runAnalysis}
+                disabled={phase === "analyzing"}
+              >
+                {phase === "analyzing" ? i.analyzing : i.analyze}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Progress */}
-        {(phase === "loading" || phase === "analyzing") && progress && (
+        {phase === "analyzing" && progress && (
           <div className="audio-score-progress">
             <div className="audio-score-progress-bar">
               <div
@@ -537,14 +723,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 <span>{score.measures.length}</span>
                 <span className="audio-score-info-label">{i.duration}:</span>
                 <span>{score.totalDuration.toFixed(1)}s</span>
-                <span className="audio-score-info-label">{i.pitchRange}:</span>
-                <span>
-                  {score.pitchRange === "melody"
-                    ? i.pitchRangeMelody
-                    : score.pitchRange === "cut_bass"
-                      ? i.pitchRangeCutBass
-                      : i.pitchRangeAll}
-                </span>
               </div>
             </div>
 
@@ -566,12 +744,6 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                     disabled={!!aiLoading}
                   >
                     {aiLoading === "improve" ? i.aiImproveLoading : i.aiImprove}
-                  </button>
-                  <button
-                    className="audio-score-btn"
-                    onClick={handleMusicXML}
-                  >
-                    {i.aiMusicXML}
                   </button>
                 </div>
                 {aiLoading === "improve" && aiProgress && (
@@ -604,11 +776,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 <button className="audio-score-btn" onClick={handlePlayStop}>
                   {playing ? i.stop : i.play}
                 </button>
+                <button className="audio-score-btn" onClick={handleMusicXML}>
+                  {i.aiMusicXML}
+                </button>
               </div>
             )}
 
           </>
         )}
+
       </div>
     </div>
   );

@@ -7,9 +7,9 @@ import { BasicPitch, noteFramesToTime, outputToNotesPoly, addPitchBendsToNoteEve
 import { DetectedNote } from "../types";
 import { midiToNoteName, midiToFrequency } from "./musicTheory";
 
+// Full tf.js bundle (includes all ops). WASM backend is removed immediately
+// after load to prevent "WebAssembly.instantiate(): Out of memory" crashes.
 const TF_CDN = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.js";
-const TF_WASM_CDN = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/tf-backend-wasm.js";
-const WASM_BINS = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@3.21.0/dist/";
 const MODEL_URL = "https://unpkg.com/@spotify/basic-pitch@1.0.1/model/model.json";
 
 /** Cached promise so concurrent calls don't insert duplicate script tags. */
@@ -19,7 +19,6 @@ function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = src;
-    script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
@@ -27,64 +26,27 @@ function loadScript(src: string): Promise<void> {
 }
 
 /**
- * Patch the WASM backend's Fill kernel to default dtype to 'float32'.
- * The kernel passes attrs.dtype to BackendWasm.makeOutput without
- * defaulting, causing "Unknown dtype undefined" when tf.signal.frame
- * internally calls fill() without specifying dtype.
- *
- * We re-register the kernel at the registry level so internal TF.js
- * calls (not just globalThis.tf.fill) are patched.
- */
-function patchWasmFillKernel(tf: any): void {
-  const kernels = tf.getKernelsForBackend?.("wasm");
-  if (!kernels) return;
-  const fillCfg = kernels.find((k: any) => k.kernelName === "Fill");
-  if (!fillCfg) return;
-  const origFunc = fillCfg.kernelFunc;
-  tf.unregisterKernel("Fill", "wasm");
-  tf.registerKernel({
-    kernelName: "Fill",
-    backendName: "wasm",
-    kernelFunc: (args: any) => {
-      if (args.attrs && args.attrs.dtype == null) {
-        args.attrs = {
-          ...args.attrs,
-          dtype: typeof args.attrs.value === "string" ? "string" : "float32",
-        };
-      }
-      return origFunc(args);
-    },
-  });
-}
-
-/**
- * Dynamically load TensorFlow.js from CDN if not already loaded.
- * Tries WASM backend, falls back to CPU.
+ * Load TF.js from CDN, remove WASM backend immediately to prevent OOM,
+ * then use WebGL (GPU) or CPU.
  */
 function ensureTfLoaded(): Promise<void> {
-  if ((globalThis as Record<string, unknown>).tf) {
-    return Promise.resolve();
-  }
+  if ((globalThis as any).tf?.ready) return Promise.resolve();
   if (tfLoadPromise) return tfLoadPromise;
   tfLoadPromise = (async () => {
     await loadScript(TF_CDN);
-    const tf = (globalThis as Record<string, any>).tf;
+    const tf = (globalThis as any).tf;
     if (!tf) throw new Error("Failed to load TensorFlow.js");
 
-    // Try WASM backend
-    try {
-      await loadScript(TF_WASM_CDN);
-      if (tf.wasm?.setWasmPaths) {
-        tf.wasm.setWasmPaths(WASM_BINS);
-      }
-      await tf.setBackend("wasm");
-      await tf.ready();
-      patchWasmFillKernel(tf);
-      return;
-    } catch (e) {
-      console.warn("[audio-score] WASM backend failed, falling back to CPU:", e);
-    }
+    // Remove WASM backend synchronously before it can start instantiating
+    try { tf.removeBackend("wasm"); } catch { /* not registered */ }
 
+    try {
+      await tf.setBackend("webgl");
+      await tf.ready();
+      return;
+    } catch {
+      console.warn("[audio-score] WebGL backend unavailable, using CPU");
+    }
     await tf.setBackend("cpu");
     await tf.ready();
   })();
@@ -97,6 +59,10 @@ let cachedModel: BasicPitch | null = null;
 
 /** basic-pitch requires 22050 Hz mono input */
 const TARGET_SR = 22050;
+
+/** Process at most this many seconds per evaluateModel call to avoid OOM */
+const MAX_SEGMENT_SECS = 60;
+const SEGMENT_SAMPLES = MAX_SEGMENT_SECS * TARGET_SR; // 1,323,000
 
 /**
  * Resample and downmix an AudioBuffer to 22050 Hz mono Float32Array
@@ -140,37 +106,47 @@ export async function detectPitchBasicPitch(
   // basic-pitch requires 22050 Hz mono; resample if needed
   const mono = await resampleToMono(audioBuffer);
 
-  const frames: number[][] = [];
-  const onsets: number[][] = [];
-  const contours: number[][] = [];
+  const numSegments = Math.ceil(mono.length / SEGMENT_SAMPLES);
+  const model = cachedModel;
 
-  await cachedModel.evaluateModel(
-    mono,
-    (f: number[][], o: number[][], c: number[][]) => {
-      frames.push(...f);
-      onsets.push(...o);
-      contours.push(...c);
-    },
-    (percent: number) => {
-      onProgress?.(percent);
-    },
-  );
+  const segmentPromises = Array.from({ length: numSegments }, async (_, seg) => {
+    const start = seg * SEGMENT_SAMPLES;
+    const chunk = mono.slice(start, start + SEGMENT_SAMPLES);
+    const timeOffsetSec = start / TARGET_SR;
 
-  const notesPoly = addPitchBendsToNoteEvents(
-    contours,
-    outputToNotesPoly(frames, onsets, onsetThreshold, frameThreshold, minNoteLength),
-  );
+    const frames: number[][] = [];
+    const onsets: number[][] = [];
+    const contours: number[][] = [];
 
-  const notesTime = noteFramesToTime(notesPoly);
+    await model!.evaluateModel(
+      chunk,
+      (f: number[][], o: number[][], c: number[][]) => {
+        frames.push(...f);
+        onsets.push(...o);
+        contours.push(...c);
+      },
+      (percent: number) => {
+        onProgress?.((seg + percent / 100) / numSegments * 100);
+      },
+    );
 
-  return notesTime.map((n) => ({
-    midi: n.pitchMidi,
-    name: midiToNoteName(n.pitchMidi),
-    startTime: n.startTimeSeconds,
-    duration: n.durationSeconds,
-    durationType: "quarter" as const,
-    dotted: false,
-    frequency: midiToFrequency(n.pitchMidi),
-    amplitude: n.amplitude,
-  }));
+    const notesPoly = addPitchBendsToNoteEvents(
+      contours,
+      outputToNotesPoly(frames, onsets, onsetThreshold, frameThreshold, minNoteLength),
+    );
+
+    return noteFramesToTime(notesPoly).map((n) => ({
+      midi: n.pitchMidi,
+      name: midiToNoteName(n.pitchMidi),
+      startTime: n.startTimeSeconds + timeOffsetSec,
+      duration: n.durationSeconds,
+      durationType: "quarter" as const,
+      dotted: false,
+      frequency: midiToFrequency(n.pitchMidi),
+      amplitude: n.amplitude,
+    }));
+  });
+
+  const segmentResults = await Promise.all(segmentPromises);
+  return segmentResults.flat();
 }

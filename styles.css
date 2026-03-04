@@ -125,42 +125,66 @@
   font-size: 12px;
 }
 
-/* BPM section */
-.audio-score-bpm-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--as-border);
-  text-align: left;
-}
-
-.audio-score-options-row {
+/* BPM row inside drop zone */
+.audio-score-bpm-row {
   display: flex;
-  gap: 16px;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-.audio-score-option-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* Current file / Drive section */
-.audio-score-current-file-name {
-  flex: 1;
-  padding: 6px 0;
-  font-size: 13px;
-  color: var(--as-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
+.audio-score-bpm-label {
+  font-size: 12px;
+  color: var(--as-text-secondary);
   white-space: nowrap;
 }
 
-.audio-score-drive-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--as-border);
-  text-align: left;
+.audio-score-bpm-input {
+  width: 72px;
+  padding: 4px 8px;
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 4px;
+  color: var(--as-text);
+  font-size: 13px;
+  outline: none;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.audio-score-bpm-input:focus {
+  border-color: var(--as-accent);
+}
+
+
+/* Full-width load button */
+.audio-score-load-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+/* Current file from Drive — card below the drop zone */
+.audio-score-drive-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: var(--as-bg-secondary);
+  border: 1px solid var(--as-border);
+  border-radius: 8px;
+}
+
+.audio-score-current-file-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--as-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audio-score-label {
@@ -169,11 +193,6 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--as-text-secondary);
-}
-
-.audio-score-drive-row {
-  display: flex;
-  gap: 8px;
 }
 
 .audio-score-input {
@@ -521,6 +540,92 @@
   opacity: 0.6;
   cursor: wait;
 }
+
+/* Demucs pre-analysis section */
+.audio-score-demucs-section {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--as-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audio-score-demucs-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.audio-score-demucs-actions .audio-score-btn.mod-cta {
+  flex: 1;
+}
+
+.audio-score-analyze-secondary {
+  font-size: 12px;
+  color: var(--as-text-secondary);
+  align-self: flex-end;
+}
+
+
+
+.audio-score-stem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.audio-score-stem-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--as-border);
+  border-radius: 6px;
+  background: var(--as-bg-primary);
+  color: var(--as-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.audio-score-stem-btn:hover:not(:disabled) {
+  background: var(--as-bg-tertiary);
+  border-color: var(--as-accent);
+}
+
+.audio-score-stem-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.audio-score-stem-btn.is-selected {
+  background: var(--as-accent);
+  color: #ffffff;
+  border-color: var(--as-accent);
+}
+
+.audio-score-btn.is-active {
+  border-color: var(--as-success);
+  color: var(--as-success);
+}
+
+.audio-score-stem-btn.is-loading {
+  background: var(--as-accent);
+  color: #ffffff;
+  border-color: var(--as-accent);
+  opacity: 1;
+  cursor: wait;
+}
+
+.audio-score-stem-name {
+  text-transform: capitalize;
+}
+
 
 /* ===== Main View ===== */
 .audio-score-main {

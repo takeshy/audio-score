@@ -2,12 +2,12 @@
  * Demucs WASM-based audio source separation service.
  *
  * Uses the freemusicdemixer.com WASM engine and htdemucs_6s model weights to
- * separate audio into stems (drums, bass, other, vocals, guitar, piano)
+ * separate audio into 6 stems (drums, bass, other, vocals, guitar, piano)
  * entirely in the browser — no server required.
  *
- * Assets are fetched via the `fetchAsset` callback, which in GemiHub is
- * backed by `api.assets.fetch(name)` — a server-side proxy that downloads
- * from upstream URLs declared in manifest.json and caches them locally.
+ * Audio is split into ~30 s overlapping chunks. A pool of 2 WASM workers
+ * processes chunks in parallel. All 6 stems are extracted per chunk, then
+ * crossfade-assembled.
  *
  * htdemucs_6s stem order:
  *   0: drums  1: bass  2: other  3: vocals  4: guitar  5: piano
@@ -16,13 +16,25 @@
 import { getTemporary, saveTemporary } from "../storage/idb";
 import { StemName } from "../types";
 
-/** htdemucs_6s stem index by name */
-const STEM_INDEX: Record<StemName, number> = {
-  drums: 0, bass: 1, other: 2, vocals: 3, guitar: 4, piano: 5,
-};
+/** Ordered stem names matching htdemucs_6s stem indices */
+export const STEM_NAMES: StemName[] = ["drums", "bass", "other", "vocals", "guitar", "piano"];
 
 /** Demucs native sample rate */
 const DEMUCS_SAMPLE_RATE = 44100;
+
+const NUM_STEMS = 6;
+
+/**
+ * Overlap added to each chunk boundary so Demucs can process the edge region
+ * with full context. Covers the ~1.95-s internal transition zone (7.8 s * 0.25).
+ */
+const CROSSFADE_SAMPLES = Math.round(2 * DEMUCS_SAMPLE_RATE); // 2 s ~ 88 200 frames
+
+/** Target chunk duration in samples (~30 s). */
+const CHUNK_SAMPLES = 30 * DEMUCS_SAMPLE_RATE; // 1 323 000
+
+/** Max simultaneous WASM worker instances. Kept low to avoid OOM. */
+const MAX_WORKERS = 2;
 
 /** Inline Web Worker code (runs inside a Blob URL worker) */
 const WORKER_CODE = `
@@ -33,17 +45,10 @@ const WORKER_CODE = `
     var msg = e.data.msg;
 
     if (msg === 'LOAD_WASM') {
-      // Load the Emscripten JS (MODULARIZE=1 → defines libdemucs factory).
-      // wasmBinaryBuffer is pre-fetched and passed directly to avoid the
-      // Emscripten module making a cross-origin .wasm fetch.
       var blob = new Blob([e.data.wasmJsBuffer], { type: 'application/javascript' });
       var url = URL.createObjectURL(blob);
       importScripts(url);
       URL.revokeObjectURL(url);
-      // Pass the pre-fetched WASM binary via Module.wasmBinary so Emscripten
-      // uses it directly and never makes a URL-based fetch for the .wasm file.
-      // (instantiateAsync skips streaming when binary is provided, and
-      //  getWasmBinary returns it directly without hitting the network.)
       libdemucs({
         wasmBinary: e.data.wasmBinaryBuffer
       }).then(function(instance) {
@@ -54,9 +59,6 @@ const WORKER_CODE = `
       });
 
     } else if (msg === 'INIT_MODEL') {
-      // Pass raw bytes (gzip-compressed ORT FlatBuffer) directly to _modelInit.
-      // The WASM handles gzip decompression internally. _modelInit returns void on
-      // success and calls exit(1) on failure (no return value check needed).
       var rawData = new Uint8Array(e.data.modelBuffer);
       var ptr = mod._malloc(rawData.byteLength);
       if (!ptr) throw new Error('_malloc failed for model (' + rawData.byteLength + ' bytes)');
@@ -69,34 +71,37 @@ const WORKER_CODE = `
       var L = new Float32Array(e.data.leftChannel);
       var R = new Float32Array(e.data.rightChannel);
       var len = L.length;
-      var NUM_STEMS = 6;   // htdemucs_6s
-      var stemIdx = (e.data.stemIdx !== undefined) ? e.data.stemIdx : 5; // default: piano
+      var NUM_STEMS = 6;
 
       var inL = mod._malloc(len * 4);
       var inR = mod._malloc(len * 4);
       mod.HEAPF32.set(L, inL >> 2);
       mod.HEAPF32.set(R, inR >> 2);
 
-      // Allocate output pointers: [stem0_L, stem0_R, stem1_L, stem1_R, ...]
       var outs = [];
       for (var i = 0; i < NUM_STEMS; i++) {
         outs.push(mod._malloc(len * 4)); // L
         outs.push(mod._malloc(len * 4)); // R
       }
 
-      // _modelDemixSegment(inL, inR, len, out0L, out0R, ..., batch, modelTotal, modelIdx)
       mod._modelDemixSegment.apply(null, [inL, inR, len].concat(outs).concat([0, 1, 0]));
 
-      var stemL = new Float32Array(mod.HEAPF32.buffer, outs[stemIdx * 2],     len);
-      var stemR = new Float32Array(mod.HEAPF32.buffer, outs[stemIdx * 2 + 1], len);
-      var left  = new Float32Array(stemL);
-      var right = new Float32Array(stemR);
+      var transfers = [];
+      var channels = [];
+      for (var s = 0; s < NUM_STEMS; s++) {
+        var sL = new Float32Array(mod.HEAPF32.buffer, outs[s * 2], len);
+        var sR = new Float32Array(mod.HEAPF32.buffer, outs[s * 2 + 1], len);
+        var copyL = new Float32Array(sL);
+        var copyR = new Float32Array(sR);
+        channels.push(copyL.buffer, copyR.buffer);
+        transfers.push(copyL.buffer, copyR.buffer);
+      }
 
       mod._free(inL);
       mod._free(inR);
       for (var j = 0; j < outs.length; j++) mod._free(outs[j]);
 
-      postMessage({ msg: 'SEPARATED', left: left.buffer, right: right.buffer }, [left.buffer, right.buffer]);
+      postMessage({ msg: 'SEPARATED', channels: channels }, transfers);
     }
   }
 
@@ -109,7 +114,7 @@ const WORKER_CODE = `
 type WorkerMsg =
   | { msg: "WASM_READY" }
   | { msg: "MODEL_READY" }
-  | { msg: "SEPARATED"; left: ArrayBuffer; right: ArrayBuffer }
+  | { msg: "SEPARATED"; channels: ArrayBuffer[] }
   | { msg: "ERROR"; error: string };
 
 function workerSend(
@@ -140,14 +145,6 @@ function isValidWasm(buf: ArrayBuffer): boolean {
   return v[0] === 0x00 && v[1] === 0x61 && v[2] === 0x73 && v[3] === 0x6d;
 }
 
-/**
- * Fetch an asset by name, using IndexedDB as a client-side cache.
- * `fetchAsset` is the callback that actually fetches the bytes
- * (typically `api.assets.fetch` in GemiHub).
- * `validate` — optional predicate; if the cached data fails it, the cache
- * entry is discarded and the asset is re-fetched (handles corruption from
- * previous failed runs that cached non-binary data).
- */
 async function fetchWithCache(
   cacheKey: string,
   assetName: string,
@@ -159,7 +156,6 @@ async function fetchWithCache(
     if (cached instanceof Blob) {
       const buf = await cached.arrayBuffer();
       if (!validate || validate(buf)) return buf;
-      // Corrupted cache entry — evict and re-fetch
       console.warn(`[demucs] cached ${assetName} failed validation, re-fetching`);
     }
   } catch {
@@ -167,10 +163,7 @@ async function fetchWithCache(
   }
 
   const buffer = await fetchAsset(assetName);
-
-  // Cache for future use (fire-and-forget)
   saveTemporary(cacheKey, new Blob([buffer])).catch(() => {});
-
   return buffer;
 }
 
@@ -192,38 +185,33 @@ export interface SeparationProgress {
   percent: number;
 }
 
-/**
- * Overlap added to each chunk boundary so Demucs can process the edge region
- * with full context. Covers the ~1.95-s internal transition zone (7.8 s × 0.25).
- */
-const CROSSFADE_SAMPLES = Math.round(2 * DEMUCS_SAMPLE_RATE); // 2 s ≈ 88 200 frames
+interface ChunkDesc {
+  L: Float32Array;
+  R: Float32Array;
+  inputStart: number;
+  coreStart: number;
+  coreEnd: number;
+}
 
-/** Number of parallel workers. Bounded to avoid excessive memory use (66 MB model × N). */
-const MAX_WORKERS = 4;
+type ChunkResult = { channels: ArrayBuffer[] };
 
 /**
- * Separate a stem from a mixed AudioBuffer using the Demucs htdemucs_6s model
- * compiled to WebAssembly.
+ * Separate all 6 stems from a mixed AudioBuffer.
  *
- * Audio is split into N equal chunks, each extended by CROSSFADE_SAMPLES on
- * both sides so Demucs has context at the boundaries. After parallel inference,
- * adjacent chunks are crossfaded over the 2×CROSSFADE overlap region.
- * N = min(hardwareConcurrency, MAX_WORKERS).
+ * Audio is split into ~30 s overlapping chunks. A pool of up to 2 WASM
+ * workers processes chunks from a queue in parallel, keeping memory usage
+ * bounded while still utilising concurrency.
  *
  * @param audioBuffer  Input audio (any sample rate — resampled to 44 100 Hz internally).
- * @param stem         Stem to extract: "drums" | "bass" | "other" | "vocals" | "guitar" | "piano".
- * @param fetchAsset   Callback to fetch a named asset by name. In GemiHub use
- *                     `(name) => api.assets.fetch(name)`.
+ * @param fetchAsset   Callback to fetch a named asset. In GemiHub: `(name) => api.assets.fetch(name)`.
  * @param onProgress   Optional progress callback.
- * @returns AudioBuffer containing only the requested stem at 44 100 Hz.
+ * @returns Record mapping each StemName to its separated AudioBuffer at 44 100 Hz.
  */
-export async function separateStem(
+export async function separateAll(
   audioBuffer: AudioBuffer,
-  stem: StemName,
   fetchAsset: (name: string) => Promise<ArrayBuffer>,
   onProgress?: (p: SeparationProgress) => void,
-): Promise<AudioBuffer> {
-  const stemIdx = STEM_INDEX[stem];
+): Promise<Record<StemName, AudioBuffer>> {
   // ── 1. Resample ──────────────────────────────────────────────────────────
   const resampled = await resampleTo(audioBuffer, DEMUCS_SAMPLE_RATE);
   const totalFrames = resampled.length;
@@ -245,26 +233,18 @@ export async function separateStem(
   );
   onProgress?.({ stage: "downloading_model", percent: 100 });
 
-  // ── 3. Determine parallelism ──────────────────────────────────────────────
-  // Each core chunk must be wider than 2×CF so the pure (non-crossfade) region
-  // is non-empty.
-  const hwConcurrency = typeof navigator !== "undefined"
-    ? (navigator.hardwareConcurrency ?? 2) : 2;
-  const nWorkers = Math.max(
-    1,
-    Math.min(hwConcurrency, MAX_WORKERS, Math.floor(totalFrames / (2 * CROSSFADE_SAMPLES + 1))),
-  );
-  const coreSize = Math.ceil(totalFrames / nWorkers);
-
-  // ── 4. Build overlapping chunk descriptors ────────────────────────────────
+  // ── 3. Build overlapping chunk descriptors (~30 s each) ───────────────────
   const ch0 = resampled.getChannelData(0);
   const ch1 = resampled.getChannelData(resampled.numberOfChannels > 1 ? 1 : 0);
 
-  const chunks = Array.from({ length: nWorkers }, (_, i) => {
+  const nChunks = Math.max(1, Math.ceil(totalFrames / CHUNK_SAMPLES));
+  const coreSize = Math.ceil(totalFrames / nChunks);
+
+  const chunks: ChunkDesc[] = Array.from({ length: nChunks }, (_, i) => {
     const coreStart  = i * coreSize;
     const coreEnd    = Math.min(coreStart + coreSize, totalFrames);
-    const inputStart = i === 0            ? 0           : coreStart - CROSSFADE_SAMPLES;
-    const inputEnd   = i === nWorkers - 1 ? totalFrames : coreEnd   + CROSSFADE_SAMPLES;
+    const inputStart = i === 0           ? 0           : coreStart - CROSSFADE_SAMPLES;
+    const inputEnd   = i === nChunks - 1 ? totalFrames : coreEnd   + CROSSFADE_SAMPLES;
     return {
       L: new Float32Array(ch0.subarray(inputStart, inputEnd)),
       R: new Float32Array(ch1.subarray(inputStart, inputEnd)),
@@ -274,13 +254,15 @@ export async function separateStem(
     };
   });
 
-  // ── 5. Init all workers in parallel ──────────────────────────────────────
+  // ── 4. Init worker pool ──────────────────────────────────────────────────
+  const nWorkers = Math.min(MAX_WORKERS, nChunks);
+
   onProgress?.({ stage: "initializing", percent: 0 });
 
   const createdWorkers: Worker[] = [];
   let workers: Worker[];
   try {
-    workers = await Promise.all(chunks.map(async () => {
+    workers = await Promise.all(Array.from({ length: nWorkers }, async () => {
       const blob = new Blob([WORKER_CODE], { type: "application/javascript" });
       const url  = URL.createObjectURL(blob);
       const w    = new Worker(url);
@@ -300,81 +282,106 @@ export async function separateStem(
 
   onProgress?.({ stage: "initializing", percent: 100 });
 
-  // ── 6. Separate each chunk in parallel ───────────────────────────────────
+  // ── 5. Process chunks via worker pool ────────────────────────────────────
   onProgress?.({ stage: "separating", percent: 0 });
 
-  const results = await Promise.all(
-    workers.map(async (w, i): Promise<{ left: ArrayBuffer; right: ArrayBuffer }> => {
-      const chunk = chunks[i];
-      try {
-        return (await workerSend(
-          w,
-          { msg: "PROCESS", leftChannel: chunk.L.buffer, rightChannel: chunk.R.buffer, stemIdx },
-          [chunk.L.buffer, chunk.R.buffer],
-          "SEPARATED",
-        )) as { msg: "SEPARATED"; left: ArrayBuffer; right: ArrayBuffer };
-      } finally {
-        w.terminate();
-      }
-    }),
-  );
+  const results: ChunkResult[] = new Array(nChunks);
+  let nextChunk = 0;
+  let doneCount = 0;
 
-  onProgress?.({ stage: "separating", percent: 100 });
+  async function workerLoop(w: Worker) {
+    while (nextChunk < nChunks) {
+      const idx = nextChunk++;
+      const chunk = chunks[idx];
+      const L = new Float32Array(chunk.L);
+      const R = new Float32Array(chunk.R);
+      results[idx] = (await workerSend(
+        w,
+        { msg: "PROCESS", leftChannel: L.buffer, rightChannel: R.buffer },
+        [L.buffer, R.buffer],
+        "SEPARATED",
+      )) as ChunkResult;
+      doneCount++;
+      onProgress?.({ stage: "separating", percent: Math.round(doneCount / nChunks * 100) });
+    }
+  }
 
-  // ── 7. Crossfade-assemble output ─────────────────────────────────────────
-  //
-  // Each boundary B = coreEnd[i] = coreStart[i+1] has a crossfade region
-  // [B - CF, B + CF) of length 2×CF:
-  //   - chunk i   fade-out: weight 1→0 over [B-CF, B+CF)
-  //   - chunk i+1 fade-in:  weight 0→1 over [B-CF, B+CF)
-  //   - weights sum to 1 everywhere → seamless blend
-  //
-  const outL = new Float32Array(totalFrames);
-  const outR = new Float32Array(totalFrames);
-  const CF   = CROSSFADE_SAMPLES;
+  try {
+    await Promise.all(workers.map(w => workerLoop(w)));
+  } finally {
+    workers.forEach(w => w.terminate());
+  }
+
+  // ── 6. Crossfade-assemble output per stem ─────────────────────────────────
+  const CF = CROSSFADE_SAMPLES;
+  const outArrays = Array.from({ length: NUM_STEMS }, () => [
+    new Float32Array(totalFrames), // L
+    new Float32Array(totalFrames), // R
+  ]);
 
   for (let i = 0; i < results.length; i++) {
     const { inputStart, coreStart, coreEnd } = chunks[i];
-    const resL    = new Float32Array(results[i].left);
-    const resR    = new Float32Array(results[i].right);
     const isFirst = i === 0;
     const isLast  = i === results.length - 1;
+    const chans = results[i].channels;
 
-    // Fade-in region [coreStart-CF, coreStart+CF): blend 0→1 (skipped for first chunk)
-    if (!isFirst) {
-      const fStart = coreStart - CF;
-      for (let g = fStart; g < coreStart + CF; g++) {
-        const t = (g - fStart) / (2 * CF);
-        const idx = g - inputStart;
-        outL[g] += resL[idx] * t;
-        outR[g] += resR[idx] * t;
+    for (let s = 0; s < NUM_STEMS; s++) {
+      const resL = new Float32Array(chans[s * 2]);
+      const resR = new Float32Array(chans[s * 2 + 1]);
+      const outL = outArrays[s][0];
+      const outR = outArrays[s][1];
+
+      if (!isFirst) {
+        const fStart = coreStart - CF;
+        for (let g = fStart; g < coreStart + CF; g++) {
+          const t = (g - fStart) / (2 * CF);
+          const idx = g - inputStart;
+          outL[g] += resL[idx] * t;
+          outR[g] += resR[idx] * t;
+        }
       }
-    }
 
-    // Pure region: sole contributor, written directly
-    const pureStart = isFirst ? coreStart : coreStart + CF;
-    const pureEnd   = isLast  ? coreEnd   : coreEnd   - CF;
-    for (let g = pureStart; g < pureEnd; g++) {
-      outL[g] = resL[g - inputStart];
-      outR[g] = resR[g - inputStart];
-    }
+      const pureStart = isFirst ? coreStart : coreStart + CF;
+      const pureEnd   = isLast  ? coreEnd   : coreEnd   - CF;
+      for (let g = pureStart; g < pureEnd; g++) {
+        outL[g] = resL[g - inputStart];
+        outR[g] = resR[g - inputStart];
+      }
 
-    // Fade-out region [coreEnd-CF, coreEnd+CF): blend 1→0 (skipped for last chunk)
-    if (!isLast) {
-      const fStart = coreEnd - CF;
-      for (let g = fStart; g < coreEnd + CF; g++) {
-        const t = 1 - (g - fStart) / (2 * CF);
-        const idx = g - inputStart;
-        outL[g] += resL[idx] * t;
-        outR[g] += resR[idx] * t;
+      if (!isLast) {
+        const fStart = coreEnd - CF;
+        for (let g = fStart; g < coreEnd + CF; g++) {
+          const t = 1 - (g - fStart) / (2 * CF);
+          const idx = g - inputStart;
+          outL[g] += resL[idx] * t;
+          outR[g] += resR[idx] * t;
+        }
       }
     }
   }
 
-  // ── 8. Build output AudioBuffer ──────────────────────────────────────────
-  const outBuf = new OfflineAudioContext(2, totalFrames, DEMUCS_SAMPLE_RATE)
-    .createBuffer(2, totalFrames, DEMUCS_SAMPLE_RATE);
-  outBuf.copyToChannel(outL, 0);
-  outBuf.copyToChannel(outR, 1);
-  return outBuf;
+  // ── 7. Build output AudioBuffers ──────────────────────────────────────────
+  const stems = {} as Record<StemName, AudioBuffer>;
+  for (let s = 0; s < NUM_STEMS; s++) {
+    const outBuf = new OfflineAudioContext(2, totalFrames, DEMUCS_SAMPLE_RATE)
+      .createBuffer(2, totalFrames, DEMUCS_SAMPLE_RATE);
+    outBuf.copyToChannel(outArrays[s][0], 0);
+    outBuf.copyToChannel(outArrays[s][1], 1);
+    stems[STEM_NAMES[s]] = outBuf;
+  }
+
+  return stems;
+}
+
+/**
+ * Separate a single stem. Convenience wrapper around separateAll.
+ */
+export async function separateStem(
+  audioBuffer: AudioBuffer,
+  stem: StemName,
+  fetchAsset: (name: string) => Promise<ArrayBuffer>,
+  onProgress?: (p: SeparationProgress) => void,
+): Promise<AudioBuffer> {
+  const all = await separateAll(audioBuffer, fetchAsset, onProgress);
+  return all[stem];
 }

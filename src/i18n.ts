@@ -41,8 +41,10 @@ export interface Translations {
   pitchRangeMelody: string;
   minAmplitude: string;
   sourceSeparation: string;
-  sourceSeparationHint: string;
-  separationStem: string;
+  download: string;
+  demucs: string;
+  demucsHint: string;
+  loadAudio: string;
   resetDefaults: string;
   save: string;
   cancel: string;
@@ -108,7 +110,7 @@ const en: Translations = {
   bass: "Bass",
   stageDecoding: "Decoding audio...",
   stageLoadingDemucs: "Loading Demucs WASM...",
-  stageSeparating: "Separating audio (piano)...",
+  stageSeparating: "Separating audio...",
   stageLoadingModel: "Loading pitch model...",
   stagePitch: "Detecting pitch...",
   stageQuantizing: "Quantizing durations...",
@@ -126,8 +128,10 @@ const en: Translations = {
   pitchRangeMelody: "Melody Only (C4–C7)",
   minAmplitude: "Min Amplitude (0 = off)",
   sourceSeparation: "Source Separation (Demucs WASM)",
-  sourceSeparationHint: "Isolates a stem before pitch detection. Downloads ~60 MB on first use.",
-  separationStem: "Stem",
+  download: "Download",
+  demucs: "Demucs",
+  demucsHint: "Separate all stems before analysis (~60 MB download on first use)",
+  loadAudio: "Load",
   resetDefaults: "Reset to Defaults",
   save: "Save",
   cancel: "Cancel",
@@ -187,7 +191,7 @@ const ja: Translations = {
   bass: "ヘ音記号",
   stageDecoding: "音声デコード中...",
   stageLoadingDemucs: "Demucs WASM 読み込み中...",
-  stageSeparating: "音源分離中（ピアノ）...",
+  stageSeparating: "音源分離中...",
   stageLoadingModel: "ピッチモデル読み込み中...",
   stagePitch: "ピッチ検出中...",
   stageQuantizing: "音価量子化中...",
@@ -205,8 +209,10 @@ const ja: Translations = {
   pitchRangeMelody: "メロディのみ (C4〜C7)",
   minAmplitude: "最小振幅 (0 = 無効)",
   sourceSeparation: "音源分離 (Demucs WASM)",
-  sourceSeparationHint: "ピッチ検出前に指定ステムを分離します。初回は約60MBをダウンロードします。",
-  separationStem: "ステム",
+  download: "ダウンロード",
+  demucs: "Demucs",
+  demucsHint: "解析前に全ステムを分離（初回は約60MBダウンロード）",
+  loadAudio: "読み込む",
   resetDefaults: "デフォルトに戻す",
   save: "保存",
   cancel: "キャンセル",

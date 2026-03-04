@@ -122,10 +122,6 @@ export interface AnalysisSettings {
   pitchRange: PitchRange;
   /** Minimum amplitude threshold (0 = off) */
   minAmplitude: number;
-  /** Run Demucs WASM source separation before pitch detection */
-  enableSourceSeparation: boolean;
-  /** Which stem to extract when source separation is enabled */
-  separationStem: StemName;
 }
 
 /** Default analysis settings */
@@ -138,8 +134,6 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   bpmOverride: 0,
   pitchRange: "all",
   minAmplitude: 0,
-  enableSourceSeparation: false,
-  separationStem: "piano",
 };
 
 /** Analysis pipeline progress */
