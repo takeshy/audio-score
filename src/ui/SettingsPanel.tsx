@@ -34,7 +34,7 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
     });
   }, [api]);
 
-  const update = (key: keyof AnalysisSettings, value: number) => {
+  const update = (key: keyof AnalysisSettings, value: number | boolean) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -112,6 +112,18 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
           step={0.01}
           onChange={(e) => update("minAmplitude", Number(e.target.value))}
         />
+      </div>
+
+      <div className="audio-score-settings-section">
+        <label className="audio-score-settings-checkbox-label">
+          <input
+            type="checkbox"
+            checked={settings.enableSourceSeparation}
+            onChange={(e) => update("enableSourceSeparation", e.target.checked)}
+          />
+          {i.sourceSeparation}
+        </label>
+        <p className="audio-score-settings-hint">{i.sourceSeparationHint}</p>
       </div>
 
       <div className="audio-score-settings-actions">

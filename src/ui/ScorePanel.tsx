@@ -6,6 +6,7 @@
 import * as React from "react";
 import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, PitchRange } from "../types";
 import { detectPitchBasicPitch } from "../core/basicPitchDetector";
+import { separatePiano } from "../core/demucsService";
 import { buildScoreFromNotes } from "../core/noteSegmenter";
 import { t } from "../i18n";
 import { saveTemporary } from "../storage/idb";
@@ -33,6 +34,9 @@ interface PluginAPI {
       messages: Array<{ role: string; content: string }>,
       options?: { model?: string; systemPrompt?: string },
     ): Promise<string>;
+  };
+  assets: {
+    fetch(name: string): Promise<ArrayBuffer>;
   };
 }
 
@@ -136,6 +140,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const progressLabel = (p: AnalysisProgress): string => {
     const labels: Record<AnalysisProgress["stage"], string> = {
       decoding: i.stageDecoding,
+      loading_demucs: i.stageLoadingDemucs,
+      separating: i.stageSeparating,
       loading_model: i.stageLoadingModel,
       pitch: i.stagePitch,
       quantizing: i.stageQuantizing,
@@ -157,15 +163,37 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       const audioCtx = new AudioContext();
       try {
         // Decode
-        setProgress({ stage: "decoding", percent: 5 });
+        setProgress({ stage: "decoding", percent: 3 });
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
+        // Optional: Demucs WASM source separation (piano stem)
+        let analysisBuffer = audioBuffer;
+        if (settings.enableSourceSeparation) {
+          setProgress({ stage: "loading_demucs", percent: 3 });
+          analysisBuffer = await separatePiano(
+            audioBuffer,
+            (name) => api.assets.fetch(name),
+            (p) => {
+              if (p.stage === "downloading_wasm") {
+                setProgress({ stage: "loading_demucs", percent: 3 + p.percent * 0.1 });
+              } else if (p.stage === "downloading_model") {
+                setProgress({ stage: "separating", percent: 13 + p.percent * 0.35 });
+              } else if (p.stage === "initializing") {
+                setProgress({ stage: "separating", percent: 48 + p.percent * 0.07 });
+              } else {
+                setProgress({ stage: "separating", percent: 55 + p.percent * 0.1 });
+              }
+            },
+          );
+        }
+
         // Load model & detect pitch
-        setProgress({ stage: "loading_model", percent: 10 });
+        const pitchStart = settings.enableSourceSeparation ? 65 : 10;
+        setProgress({ stage: "loading_model", percent: pitchStart });
         const notes = await detectPitchBasicPitch(
-          audioBuffer,
+          analysisBuffer,
           (pct) => {
-            setProgress({ stage: "pitch", percent: 10 + pct * 70 });
+            setProgress({ stage: "pitch", percent: pitchStart + pct * (85 - pitchStart) });
           },
           settings.onsetThreshold,
           settings.frameThreshold,

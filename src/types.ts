@@ -119,6 +119,8 @@ export interface AnalysisSettings {
   pitchRange: PitchRange;
   /** Minimum amplitude threshold (0 = off) */
   minAmplitude: number;
+  /** Run Demucs WASM source separation before pitch detection */
+  enableSourceSeparation: boolean;
 }
 
 /** Default analysis settings */
@@ -131,10 +133,11 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   bpmOverride: 0,
   pitchRange: "all",
   minAmplitude: 0,
+  enableSourceSeparation: false,
 };
 
 /** Analysis pipeline progress */
 export interface AnalysisProgress {
-  stage: "decoding" | "loading_model" | "pitch" | "quantizing" | "done";
+  stage: "decoding" | "loading_demucs" | "separating" | "loading_model" | "pitch" | "quantizing" | "done";
   percent: number;
 }
