@@ -42,6 +42,7 @@ export interface Translations {
   minAmplitude: string;
   sourceSeparation: string;
   sourceSeparationHint: string;
+  separationStem: string;
   resetDefaults: string;
   save: string;
   cancel: string;
@@ -125,7 +126,8 @@ const en: Translations = {
   pitchRangeMelody: "Melody Only (C4–C7)",
   minAmplitude: "Min Amplitude (0 = off)",
   sourceSeparation: "Source Separation (Demucs WASM)",
-  sourceSeparationHint: "Isolates piano stem before pitch detection. Downloads ~60 MB on first use.",
+  sourceSeparationHint: "Isolates a stem before pitch detection. Downloads ~60 MB on first use.",
+  separationStem: "Stem",
   resetDefaults: "Reset to Defaults",
   save: "Save",
   cancel: "Cancel",
@@ -203,7 +205,8 @@ const ja: Translations = {
   pitchRangeMelody: "メロディのみ (C4〜C7)",
   minAmplitude: "最小振幅 (0 = 無効)",
   sourceSeparation: "音源分離 (Demucs WASM)",
-  sourceSeparationHint: "ピッチ検出前にピアノ音源を分離します。初回は約60MBをダウンロードします。",
+  sourceSeparationHint: "ピッチ検出前に指定ステムを分離します。初回は約60MBをダウンロードします。",
+  separationStem: "ステム",
   resetDefaults: "デフォルトに戻す",
   save: "保存",
   cancel: "キャンセル",

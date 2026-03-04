@@ -3,7 +3,7 @@
  */
 
 import * as React from "react";
-import { AnalysisSettings, DEFAULT_SETTINGS } from "../types";
+import { AnalysisSettings, DEFAULT_SETTINGS, StemName } from "../types";
 import { t } from "../i18n";
 
 interface PluginAPI {
@@ -34,9 +34,11 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
     });
   }, [api]);
 
-  const update = (key: keyof AnalysisSettings, value: number | boolean) => {
+  const update = (key: keyof AnalysisSettings, value: number | boolean | string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
+
+  const STEMS: StemName[] = ["drums", "bass", "other", "vocals", "guitar", "piano"];
 
   const handleSave = async () => {
     await api.storage.set("analysisSettings", settings);
@@ -123,6 +125,19 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
           />
           {i.sourceSeparation}
         </label>
+        {settings.enableSourceSeparation && (
+          <div className="audio-score-settings-grid" style={{ marginTop: 8 }}>
+            <label>{i.separationStem}</label>
+            <select
+              value={settings.separationStem}
+              onChange={(e) => update("separationStem", e.target.value as StemName)}
+            >
+              {STEMS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <p className="audio-score-settings-hint">{i.sourceSeparationHint}</p>
       </div>
 

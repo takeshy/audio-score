@@ -1,3 +1,6 @@
+/** Demucs stem names (htdemucs_6s order) */
+export type StemName = "drums" | "bass" | "other" | "vocals" | "guitar" | "piano";
+
 /** A detected note after segmentation */
 export interface DetectedNote {
   /** MIDI note number (0-127, -1 = rest) */
@@ -121,6 +124,8 @@ export interface AnalysisSettings {
   minAmplitude: number;
   /** Run Demucs WASM source separation before pitch detection */
   enableSourceSeparation: boolean;
+  /** Which stem to extract when source separation is enabled */
+  separationStem: StemName;
 }
 
 /** Default analysis settings */
@@ -134,6 +139,7 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   pitchRange: "all",
   minAmplitude: 0,
   enableSourceSeparation: false,
+  separationStem: "piano",
 };
 
 /** Analysis pipeline progress */

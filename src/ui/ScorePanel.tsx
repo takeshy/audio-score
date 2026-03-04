@@ -6,7 +6,7 @@
 import * as React from "react";
 import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, PitchRange } from "../types";
 import { detectPitchBasicPitch } from "../core/basicPitchDetector";
-import { separatePiano } from "../core/demucsService";
+import { separateStem } from "../core/demucsService";
 import { buildScoreFromNotes } from "../core/noteSegmenter";
 import { t } from "../i18n";
 import { saveTemporary } from "../storage/idb";
@@ -170,8 +170,9 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
         let analysisBuffer = audioBuffer;
         if (settings.enableSourceSeparation) {
           setProgress({ stage: "loading_demucs", percent: 3 });
-          analysisBuffer = await separatePiano(
+          analysisBuffer = await separateStem(
             audioBuffer,
+            settings.separationStem,
             (name) => api.assets.fetch(name),
             (p) => {
               if (p.stage === "downloading_wasm") {

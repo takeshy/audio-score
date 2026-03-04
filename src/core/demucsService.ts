@@ -14,6 +14,12 @@
  */
 
 import { getTemporary, saveTemporary } from "../storage/idb";
+import { StemName } from "../types";
+
+/** htdemucs_6s stem index by name */
+const STEM_INDEX: Record<StemName, number> = {
+  drums: 0, bass: 1, other: 2, vocals: 3, guitar: 4, piano: 5,
+};
 
 /** Demucs native sample rate */
 const DEMUCS_SAMPLE_RATE = 44100;
@@ -64,7 +70,7 @@ const WORKER_CODE = `
       var R = new Float32Array(e.data.rightChannel);
       var len = L.length;
       var NUM_STEMS = 6;   // htdemucs_6s
-      var PIANO_IDX = 5;   // piano is the 6th stem
+      var stemIdx = (e.data.stemIdx !== undefined) ? e.data.stemIdx : 5; // default: piano
 
       var inL = mod._malloc(len * 4);
       var inR = mod._malloc(len * 4);
@@ -81,10 +87,10 @@ const WORKER_CODE = `
       // _modelDemixSegment(inL, inR, len, out0L, out0R, ..., batch, modelTotal, modelIdx)
       mod._modelDemixSegment.apply(null, [inL, inR, len].concat(outs).concat([0, 1, 0]));
 
-      var pianoL = new Float32Array(mod.HEAPF32.buffer, outs[PIANO_IDX * 2],     len);
-      var pianoR = new Float32Array(mod.HEAPF32.buffer, outs[PIANO_IDX * 2 + 1], len);
-      var left  = new Float32Array(pianoL);
-      var right = new Float32Array(pianoR);
+      var stemL = new Float32Array(mod.HEAPF32.buffer, outs[stemIdx * 2],     len);
+      var stemR = new Float32Array(mod.HEAPF32.buffer, outs[stemIdx * 2 + 1], len);
+      var left  = new Float32Array(stemL);
+      var right = new Float32Array(stemR);
 
       mod._free(inL);
       mod._free(inR);
@@ -196,8 +202,8 @@ const CROSSFADE_SAMPLES = Math.round(2 * DEMUCS_SAMPLE_RATE); // 2 s ≈ 88 200 
 const MAX_WORKERS = 4;
 
 /**
- * Separate the piano stem from a mixed AudioBuffer using the Demucs
- * htdemucs_6s model compiled to WebAssembly.
+ * Separate a stem from a mixed AudioBuffer using the Demucs htdemucs_6s model
+ * compiled to WebAssembly.
  *
  * Audio is split into N equal chunks, each extended by CROSSFADE_SAMPLES on
  * both sides so Demucs has context at the boundaries. After parallel inference,
@@ -205,16 +211,19 @@ const MAX_WORKERS = 4;
  * N = min(hardwareConcurrency, MAX_WORKERS).
  *
  * @param audioBuffer  Input audio (any sample rate — resampled to 44 100 Hz internally).
+ * @param stem         Stem to extract: "drums" | "bass" | "other" | "vocals" | "guitar" | "piano".
  * @param fetchAsset   Callback to fetch a named asset by name. In GemiHub use
  *                     `(name) => api.assets.fetch(name)`.
  * @param onProgress   Optional progress callback.
- * @returns AudioBuffer containing only the piano stem at 44 100 Hz.
+ * @returns AudioBuffer containing only the requested stem at 44 100 Hz.
  */
-export async function separatePiano(
+export async function separateStem(
   audioBuffer: AudioBuffer,
+  stem: StemName,
   fetchAsset: (name: string) => Promise<ArrayBuffer>,
   onProgress?: (p: SeparationProgress) => void,
 ): Promise<AudioBuffer> {
+  const stemIdx = STEM_INDEX[stem];
   // ── 1. Resample ──────────────────────────────────────────────────────────
   const resampled = await resampleTo(audioBuffer, DEMUCS_SAMPLE_RATE);
   const totalFrames = resampled.length;
@@ -300,7 +309,7 @@ export async function separatePiano(
       try {
         return (await workerSend(
           w,
-          { msg: "PROCESS", leftChannel: chunk.L.buffer, rightChannel: chunk.R.buffer },
+          { msg: "PROCESS", leftChannel: chunk.L.buffer, rightChannel: chunk.R.buffer, stemIdx },
           [chunk.L.buffer, chunk.R.buffer],
           "SEPARATED",
         )) as { msg: "SEPARATED"; left: ArrayBuffer; right: ArrayBuffer };
