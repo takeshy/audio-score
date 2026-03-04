@@ -553,6 +553,32 @@
   gap: 8px;
 }
 
+.audio-score-workers-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-score-workers-label {
+  font-size: 12px;
+  color: var(--as-text-secondary);
+  white-space: nowrap;
+}
+
+.audio-score-workers-select {
+  padding: 4px 8px;
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 4px;
+  color: var(--as-text);
+  font-size: 13px;
+  outline: none;
+}
+
+.audio-score-workers-select:focus {
+  border-color: var(--as-accent);
+}
+
 .audio-score-demucs-actions {
   display: flex;
   gap: 8px;

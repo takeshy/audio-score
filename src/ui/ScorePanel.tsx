@@ -6,7 +6,7 @@
 import * as React from "react";
 import { ScoreData, AnalysisSettings, AnalysisProgress, DEFAULT_SETTINGS, StemName } from "../types";
 import { detectPitchBasicPitch } from "../core/basicPitchDetector";
-import { separateAll, STEM_NAMES } from "../core/demucsService";
+import { separateAll, STEM_NAMES, DEFAULT_NUM_WORKERS } from "../core/demucsService";
 import { buildScoreFromNotes } from "../core/noteSegmenter";
 import { t } from "../i18n";
 import { saveTemporary } from "../storage/idb";
@@ -110,6 +110,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const stemBuffers = React.useRef<Map<StemName, AudioBuffer>>(new Map());
   const [demucsStem, setDemucsStem] = React.useState<StemName | null>(null);
   const [demucsDone, setDemucsDone] = React.useState(false);
+  const [demucsWorkers, setDemucsWorkers] = React.useState(DEFAULT_NUM_WORKERS);
   const [demucsRunning, setDemucsRunning] = React.useState(false);
   const [demucsProgress, setDemucsProgress] = React.useState(0);
   const [demucsError, setDemucsError] = React.useState("");
@@ -304,6 +305,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           else if (p.stage === "initializing")      setDemucsProgress(40 + p.percent * 0.1);
           else                                      setDemucsProgress(50 + p.percent * 0.5);
         },
+        demucsWorkers,
       );
       for (const [name, buf] of Object.entries(all)) {
         stemBuffers.current.set(name as StemName, buf);
@@ -317,7 +319,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       setDemucsRunning(false);
       setDemucsProgress(0);
     }
-  }, [demucsRunning, api.assets]);
+  }, [demucsRunning, api.assets, demucsWorkers]);
 
   /**
    * Handle file input change — decode only, don't analyze yet.
@@ -611,13 +613,28 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           <div className="audio-score-demucs-section">
             {/* Primary action: Source Separation */}
             {!demucsDone && (
-              <button
-                className={`audio-score-btn mod-cta audio-score-load-btn${demucsRunning ? " is-loading" : ""}`}
-                onClick={handleDemucsRun}
-                disabled={demucsRunning || phase === "analyzing"}
-              >
-                {demucsRunning ? i.stageSeparating : i.sourceSeparation}
-              </button>
+              <>
+                <div className="audio-score-workers-row">
+                  <label className="audio-score-workers-label">Workers</label>
+                  <select
+                    className="audio-score-workers-select"
+                    value={demucsWorkers}
+                    onChange={(e) => setDemucsWorkers(Number(e.target.value))}
+                    disabled={demucsRunning}
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className={`audio-score-btn mod-cta audio-score-load-btn${demucsRunning ? " is-loading" : ""}`}
+                  onClick={handleDemucsRun}
+                  disabled={demucsRunning || phase === "analyzing"}
+                >
+                  {demucsRunning ? i.stageSeparating : i.sourceSeparation}
+                </button>
+              </>
             )}
             {demucsRunning && (
               <div className="audio-score-progress">

@@ -30,11 +30,11 @@ const NUM_STEMS = 6;
  */
 const CROSSFADE_SAMPLES = Math.round(2 * DEMUCS_SAMPLE_RATE); // 2 s ~ 88 200 frames
 
-/** Target chunk duration in samples (~30 s). */
-const CHUNK_SAMPLES = 30 * DEMUCS_SAMPLE_RATE; // 1 323 000
+/** Target chunk duration in samples (~60 s). */
+const CHUNK_SAMPLES = 60 * DEMUCS_SAMPLE_RATE;
 
-/** Max simultaneous WASM worker instances. Kept low to avoid OOM. */
-const MAX_WORKERS = 2;
+/** Default simultaneous WASM worker instances. */
+export const DEFAULT_NUM_WORKERS = 2;
 
 /** Inline Web Worker code (runs inside a Blob URL worker) */
 const WORKER_CODE = `
@@ -198,19 +198,21 @@ type ChunkResult = { channels: ArrayBuffer[] };
 /**
  * Separate all 6 stems from a mixed AudioBuffer.
  *
- * Audio is split into ~30 s overlapping chunks. A pool of up to 2 WASM
+ * Audio is split into ~60 s overlapping chunks. A configurable pool of WASM
  * workers processes chunks from a queue in parallel, keeping memory usage
  * bounded while still utilising concurrency.
  *
  * @param audioBuffer  Input audio (any sample rate — resampled to 44 100 Hz internally).
  * @param fetchAsset   Callback to fetch a named asset. In GemiHub: `(name) => api.assets.fetch(name)`.
  * @param onProgress   Optional progress callback.
+ * @param numWorkers   Number of parallel WASM workers (default: DEFAULT_NUM_WORKERS).
  * @returns Record mapping each StemName to its separated AudioBuffer at 44 100 Hz.
  */
 export async function separateAll(
   audioBuffer: AudioBuffer,
   fetchAsset: (name: string) => Promise<ArrayBuffer>,
   onProgress?: (p: SeparationProgress) => void,
+  numWorkers: number = DEFAULT_NUM_WORKERS,
 ): Promise<Record<StemName, AudioBuffer>> {
   // ── 1. Resample ──────────────────────────────────────────────────────────
   const resampled = await resampleTo(audioBuffer, DEMUCS_SAMPLE_RATE);
@@ -255,7 +257,7 @@ export async function separateAll(
   });
 
   // ── 4. Init worker pool ──────────────────────────────────────────────────
-  const nWorkers = Math.min(MAX_WORKERS, nChunks);
+  const nWorkers = Math.min(numWorkers, nChunks);
 
   onProgress?.({ stage: "initializing", percent: 0 });
 
