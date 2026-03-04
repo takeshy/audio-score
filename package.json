@@ -1,6 +1,6 @@
 {
   "name": "hub-audio-score",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Audio to sheet music plugin for GemiHub - ML-based pitch detection with staff notation rendering",
   "main": "main.js",
   "scripts": {
