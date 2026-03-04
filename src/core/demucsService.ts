@@ -30,7 +30,7 @@ const NUM_STEMS = 6;
  */
 const CROSSFADE_SAMPLES = Math.round(2 * DEMUCS_SAMPLE_RATE); // 2 s ~ 88 200 frames
 
-/** Target chunk duration in samples (~60 s). */
+/** Chunk duration in samples (~60 s). Used when numWorkers > 1. */
 const CHUNK_SAMPLES = 60 * DEMUCS_SAMPLE_RATE;
 
 /** Default simultaneous WASM worker instances. */
@@ -239,7 +239,7 @@ export async function separateAll(
   const ch0 = resampled.getChannelData(0);
   const ch1 = resampled.getChannelData(resampled.numberOfChannels > 1 ? 1 : 0);
 
-  const nChunks = Math.max(1, Math.ceil(totalFrames / CHUNK_SAMPLES));
+  const nChunks = numWorkers <= 1 ? 1 : Math.max(1, Math.ceil(totalFrames / CHUNK_SAMPLES));
   const coreSize = Math.ceil(totalFrames / nChunks);
 
   const chunks: ChunkDesc[] = Array.from({ length: nChunks }, (_, i) => {
