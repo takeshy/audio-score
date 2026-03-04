@@ -131,10 +131,12 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   // Whether the currently open file is an audio file
   const isCurrentFileAudio = !!(activeFileId && activeFileName && AUDIO_EXTS.test(activeFileName));
 
-  // Auto-load if the currently open file is a .audioscore (ScoreData JSON)
+  // Auto-load if the currently open file is a .audioscore or .musicxml
   React.useEffect(() => {
     if (!activeFileId || !activeFileName) return;
-    if (!activeFileName.endsWith(".audioscore")) return;
+    const isAudioScore = activeFileName.endsWith(".audioscore");
+    const isMusicXml = activeFileName.endsWith(".musicxml") || activeFileName.endsWith(".xml");
+    if (!isAudioScore && !isMusicXml) return;
 
     setPhase("loading");
     setError("");
@@ -145,13 +147,19 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); });
 
     loadText.then(
-      (text) => {
+      async (text) => {
         try {
-          const parsed = JSON.parse(text) as ScoreData;
+          let parsed: ScoreData;
+          if (isMusicXml) {
+            const { parseMusicXML } = await import("../core/musicXmlImport");
+            parsed = parseMusicXML(text);
+          } else {
+            parsed = JSON.parse(text) as ScoreData;
+          }
           if (parsed && parsed.measures) {
             setScore(parsed);
             setChordAnnotations(parsed.chordAnnotations ?? []);
-            setFileName(activeFileName.replace(/\.audioscore$/, ""));
+            setFileName(activeFileName.replace(/\.(audioscore|musicxml|xml)$/, ""));
             setPhase("done");
           } else {
             setPhase("idle");
@@ -339,6 +347,28 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
    */
   const loadFile = React.useCallback(
     (file: File) => {
+      if (file.name.endsWith(".musicxml") || file.name.endsWith(".xml")) {
+        file.text().then(
+          async (xml) => {
+            try {
+              const { parseMusicXML } = await import("../core/musicXmlImport");
+              const parsed = parseMusicXML(xml);
+              setScore(parsed);
+              setChordAnnotations(parsed.chordAnnotations ?? []);
+              setFileName(file.name.replace(/\.(musicxml|xml)$/, ""));
+              setPhase("done");
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+              setPhase("error");
+            }
+          },
+          (err) => {
+            setError(err instanceof Error ? err.message : String(err));
+            setPhase("error");
+          }
+        );
+        return;
+      }
       file.arrayBuffer().then(
         (buf) => decodeAudio(buf, file.name),
         (err) => {
@@ -584,7 +614,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           <input
             ref={fileInputRef}
             type="file"
-            accept="audio/*"
+            accept="audio/*,.musicxml,.xml"
             onChange={handleFileChange}
             style={{ display: "none" }}
           />
