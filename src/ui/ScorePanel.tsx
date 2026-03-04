@@ -673,7 +673,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                         onChange={(e) => setDemucsWorkers(Number(e.target.value))}
                         disabled={demucsRunning}
                       >
-                        {[1, 2, 3].map((n) => (
+                        {[1, 2].map((n) => (
                           <option key={n} value={n}>{n}</option>
                         ))}
                       </select>
