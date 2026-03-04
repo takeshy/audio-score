@@ -17,6 +17,10 @@
     {
       "name": "htdemucs_6s.ort.gz",
       "url": "https://storage.googleapis.com/takeshy-work-public-files/htdemucs_6s_patched.ort.gz"
+    },
+    {
+      "name": "piano_transcription.ort.gz",
+      "url": "https://storage.googleapis.com/takeshy-work-public-files/piano_transcription.ort.gz"
     }
   ]
 }

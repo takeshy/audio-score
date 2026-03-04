@@ -112,6 +112,15 @@ export function SettingsPanel({ api, language, onClose }: SettingsPanelProps) {
           step={0.01}
           onChange={(e) => update("minAmplitude", Number(e.target.value))}
         />
+
+        <label>{i.detectorType}</label>
+        <select
+          value={settings.detectorType}
+          onChange={(e) => update("detectorType", e.target.value)}
+        >
+          <option value="basic_pitch">{i.detectorBasicPitch}</option>
+          <option value="piano_transcription">{i.detectorPianoTranscription}</option>
+        </select>
       </div>
 
       <div className="audio-score-settings-actions">

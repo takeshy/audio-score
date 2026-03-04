@@ -200,6 +200,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       loading_demucs: i.stageLoadingDemucs,
       separating: i.stageSeparating,
       loading_model: i.stageLoadingModel,
+      loading_ort: i.stageLoadingOrt,
       pitch: i.stagePitch,
       quantizing: i.stageQuantizing,
       done: i.stageDone,
@@ -249,17 +250,28 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     setPhase("analyzing");
     setError("");
     setScore(null);
-    setProgress({ stage: "loading_model", percent: 10 });
 
     const analysisBuffer = demucsBufferRef.current ?? audioRef.current;
 
     try {
-      const notes = await detectPitchBasicPitch(
-        analysisBuffer,
-        (pct) => setProgress({ stage: "pitch", percent: 10 + pct * 75 }),
-        settings.onsetThreshold,
-        settings.frameThreshold,
-      );
+      let notes;
+      if (settings.detectorType === "piano_transcription") {
+        setProgress({ stage: "loading_ort", percent: 5 });
+        const { detectPitchPianoTranscription } = await import("../core/pianoTranscriptionService");
+        notes = await detectPitchPianoTranscription(
+          analysisBuffer,
+          (assetName) => api.assets.fetch(assetName),
+          (pct) => setProgress({ stage: "pitch", percent: 10 + pct * 0.75 }),
+        );
+      } else {
+        setProgress({ stage: "loading_model", percent: 10 });
+        notes = await detectPitchBasicPitch(
+          analysisBuffer,
+          (pct) => setProgress({ stage: "pitch", percent: 10 + pct * 75 }),
+          settings.onsetThreshold,
+          settings.frameThreshold,
+        );
+      }
 
       setProgress({ stage: "quantizing", percent: 85 });
       await new Promise((r) => setTimeout(r, 0));
@@ -672,6 +684,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                       ))}
                     </div>
                     <div className="audio-score-demucs-actions">
+                      <select
+                        className="audio-score-model-select"
+                        value={settings.detectorType}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, detectorType: e.target.value as any }))}
+                        disabled={phase === "analyzing"}
+                      >
+                        <option value="basic_pitch">{i.detectorBasicPitch}</option>
+                        <option value="piano_transcription">{i.detectorPianoTranscription}</option>
+                      </select>
                       <button
                         className="audio-score-btn mod-cta"
                         onClick={runAnalysis}
@@ -701,13 +722,24 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
             {/* Analyze button: secondary on desktop (skip separation), primary on mobile */}
             {(!demucsDone && !demucsRunning) && (
-              <button
-                className={isMobile ? "audio-score-btn mod-cta audio-score-load-btn" : "audio-score-btn audio-score-analyze-secondary"}
-                onClick={runAnalysis}
-                disabled={phase === "analyzing"}
-              >
-                {phase === "analyzing" ? i.analyzing : i.analyze}
-              </button>
+              <div className="audio-score-analyze-row">
+                <select
+                  className="audio-score-model-select"
+                  value={settings.detectorType}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, detectorType: e.target.value as any }))}
+                  disabled={phase === "analyzing"}
+                >
+                  <option value="basic_pitch">{i.detectorBasicPitch}</option>
+                  <option value="piano_transcription">{i.detectorPianoTranscription}</option>
+                </select>
+                <button
+                  className={isMobile ? "audio-score-btn mod-cta audio-score-load-btn" : "audio-score-btn audio-score-analyze-secondary"}
+                  onClick={runAnalysis}
+                  disabled={phase === "analyzing"}
+                >
+                  {phase === "analyzing" ? i.analyzing : i.analyze}
+                </button>
+              </div>
             )}
           </div>
         )}

@@ -589,10 +589,27 @@
   flex: 1;
 }
 
+.audio-score-analyze-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.audio-score-model-select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--as-border);
+  border-radius: 4px;
+  background: var(--as-bg-primary);
+  color: var(--as-text);
+}
+
 .audio-score-analyze-secondary {
   font-size: 12px;
   color: var(--as-text-secondary);
-  align-self: flex-end;
+  white-space: nowrap;
 }
 
 

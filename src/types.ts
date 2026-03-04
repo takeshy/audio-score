@@ -1,6 +1,9 @@
 /** Demucs stem names (htdemucs_6s order) */
 export type StemName = "drums" | "bass" | "other" | "vocals" | "guitar" | "piano";
 
+/** Pitch detector type */
+export type DetectorType = "basic_pitch" | "piano_transcription";
+
 /** A detected note after segmentation */
 export interface DetectedNote {
   /** MIDI note number (0-127, -1 = rest) */
@@ -122,6 +125,8 @@ export interface AnalysisSettings {
   pitchRange: PitchRange;
   /** Minimum amplitude threshold (0 = off) */
   minAmplitude: number;
+  /** Pitch detector type */
+  detectorType: DetectorType;
 }
 
 /** Default analysis settings */
@@ -134,10 +139,11 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   bpmOverride: 0,
   pitchRange: "all",
   minAmplitude: 0,
+  detectorType: "basic_pitch",
 };
 
 /** Analysis pipeline progress */
 export interface AnalysisProgress {
-  stage: "decoding" | "loading_demucs" | "separating" | "loading_model" | "pitch" | "quantizing" | "done";
+  stage: "decoding" | "loading_demucs" | "separating" | "loading_model" | "loading_ort" | "pitch" | "quantizing" | "done";
   percent: number;
 }

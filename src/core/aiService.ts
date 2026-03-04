@@ -377,9 +377,20 @@ IMPORTANT RULES:
 
 /**
  * Convert ScoreData to MusicXML format (no AI needed).
+ *
+ * Notes are grouped into chords using a BPM-relative tolerance, then laid out
+ * sequentially in a single voice. Each chord's duration is clamped to not
+ * overlap the next chord, producing valid non-corrupt MusicXML.
  */
 export function convertToMusicXML(score: ScoreData): string {
   const divisions = 8; // divisions per quarter note (32nd note = 1)
+  const beatDuration = 60 / score.bpm; // seconds per quarter note
+  const measureDivisions = score.beatsPerMeasure * divisions;
+  const measureDurationSec = beatDuration * score.beatsPerMeasure;
+  const downbeat = score.downbeatOffset ?? 0;
+
+  // Chord grouping tolerance: notes within 1 sixteenth note are a chord
+  const chordTolerance = beatDuration / 4;
 
   const durationMap: Record<string, { dur: number; type: string }> = {
     whole:         { dur: divisions * 4, type: "whole" },
@@ -390,8 +401,56 @@ export function convertToMusicXML(score: ScoreData): string {
     thirty_second: { dur: divisions / 8, type: "32nd" },
   };
 
+  // All standard durations (plain + dotted) for type lookup, sorted descending
+  const allDurations: Array<{ dur: number; type: string; dotted: boolean }> = [];
+  for (const [, v] of Object.entries(durationMap)) {
+    allDurations.push({ dur: v.dur, type: v.type, dotted: false });
+    allDurations.push({ dur: Math.round(v.dur * 1.5), type: v.type, dotted: true });
+  }
+  allDurations.sort((a, b) => b.dur - a.dur);
+
+  /** Find the best matching note type for a given duration in divisions. */
+  function findNoteType(dur: number): { type: string; dotted: boolean } {
+    // Exact match first
+    for (const d of allDurations) {
+      if (d.dur === dur) return { type: d.type, dotted: d.dotted };
+    }
+    // Largest that fits
+    for (const d of allDurations) {
+      if (d.dur <= dur) return { type: d.type, dotted: d.dotted };
+    }
+    return { type: "32nd", dotted: false };
+  }
+
+  // Rest durations for gap filling (largest first, non-dotted only)
+  const restTypes = [
+    { dur: divisions * 4, type: "whole" },
+    { dur: divisions * 2, type: "half" },
+    { dur: divisions,     type: "quarter" },
+    { dur: divisions / 2, type: "eighth" },
+    { dur: divisions / 4, type: "16th" },
+    { dur: divisions / 8, type: "32nd" },
+  ];
+
+  /** Emit rest notes to fill a gap of `gap` divisions. */
+  function emitRests(out: string[], gap: number): void {
+    let remaining = Math.round(gap);
+    for (const rt of restTypes) {
+      while (remaining >= rt.dur && rt.dur > 0) {
+        out.push(`      <note>`);
+        out.push(`        <rest/>`);
+        out.push(`        <duration>${rt.dur}</duration>`);
+        out.push(`        <voice>1</voice>`);
+        out.push(`        <type>${rt.type}</type>`);
+        out.push(`      </note>`);
+        remaining -= rt.dur;
+      }
+    }
+  }
+
   const lines: string[] = [];
   lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(`<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">`);
   lines.push(`<score-partwise version="4.0">`);
   lines.push(`  <part-list>`);
   lines.push(`    <score-part id="P1"><part-name>Music</part-name></score-part>`);
@@ -402,14 +461,12 @@ export function convertToMusicXML(score: ScoreData): string {
     lines.push(`    <measure number="${measure.number}">`);
 
     if (measure.number === 1) {
-      // Attributes
       lines.push(`      <attributes>`);
       lines.push(`        <divisions>${divisions}</divisions>`);
       lines.push(`        <key><fifths>${score.key.accidentals}</fifths><mode>${score.key.mode}</mode></key>`);
       lines.push(`        <time><beats>${score.beatsPerMeasure}</beats><beat-type>${score.beatUnit}</beat-type></time>`);
       lines.push(`        <clef><sign>${score.clef === "treble" ? "G" : "F"}</sign><line>${score.clef === "treble" ? 2 : 4}</line></clef>`);
       lines.push(`      </attributes>`);
-      // Tempo
       lines.push(`      <direction placement="above">`);
       lines.push(`        <direction-type>`);
       lines.push(`          <metronome><beat-unit>quarter</beat-unit><per-minute>${score.bpm}</per-minute></metronome>`);
@@ -418,13 +475,15 @@ export function convertToMusicXML(score: ScoreData): string {
       lines.push(`      </direction>`);
     }
 
-    // Group notes by startTime for chords
+    const measureStartSec = downbeat + (measure.number - 1) * measureDurationSec;
+
+    // Group notes into chords using BPM-relative tolerance
     const sorted = [...measure.notes].sort((a, b) => a.startTime - b.startTime);
     const groups: Array<{ notes: typeof sorted; durationType: string; dotted: boolean }> = [];
     if (sorted.length > 0) {
       let cur = [sorted[0]];
       for (let n = 1; n < sorted.length; n++) {
-        if (Math.abs(sorted[n].startTime - cur[0].startTime) <= 0.02) {
+        if (Math.abs(sorted[n].startTime - cur[0].startTime) <= chordTolerance) {
           cur.push(sorted[n]);
         } else {
           groups.push({ notes: cur, durationType: cur[0].durationType, dotted: cur[0].dotted });
@@ -434,9 +493,42 @@ export function convertToMusicXML(score: ScoreData): string {
       groups.push({ notes: cur, durationType: cur[0].durationType, dotted: cur[0].dotted });
     }
 
-    for (const group of groups) {
+    // Pre-compute positions for all groups
+    const positions = groups.map((g) => {
+      const noteTimeSec = g.notes[0].startTime - measureStartSec;
+      return Math.max(0, Math.min(
+        Math.round((noteTimeSec / beatDuration) * divisions),
+        measureDivisions - 1,
+      ));
+    });
+
+    let cursor = 0;
+
+    for (let gi = 0; gi < groups.length; gi++) {
+      const group = groups[gi];
+      const notePos = positions[gi];
+
+      // Skip groups behind cursor (merged by chord tolerance should prevent most cases)
+      if (notePos < cursor) continue;
+
+      // Fill gap with rests
+      if (notePos > cursor) {
+        emitRests(lines, notePos - cursor);
+        cursor = notePos;
+      }
+
+      // Duration: clamp to gap before next group and measure end
+      const nextPos = gi + 1 < groups.length
+        ? Math.max(notePos + 1, positions[gi + 1])
+        : measureDivisions;
       const info = durationMap[group.durationType] ?? durationMap.quarter;
-      const dur = group.dotted ? Math.round(info.dur * 1.5) : info.dur;
+      const rawDur = group.dotted ? Math.round(info.dur * 1.5) : info.dur;
+      const dur = Math.min(rawDur, nextPos - notePos, measureDivisions - notePos);
+      if (dur <= 0) continue;
+
+      const { type: noteType, dotted: noteDotted } = dur === rawDur
+        ? { type: info.type, dotted: group.dotted }
+        : findNoteType(dur);
 
       for (let ni = 0; ni < group.notes.length; ni++) {
         const note = group.notes[ni];
@@ -460,11 +552,27 @@ export function convertToMusicXML(score: ScoreData): string {
         }
 
         lines.push(`        <duration>${dur}</duration>`);
-        lines.push(`        <type>${info.type}</type>`);
-        if (group.dotted) {
+        lines.push(`        <voice>1</voice>`);
+        lines.push(`        <type>${noteType}</type>`);
+        if (noteDotted) {
           lines.push(`        <dot/>`);
         }
         lines.push(`      </note>`);
+      }
+
+      cursor += dur;
+    }
+
+    // Fill remaining measure
+    if (cursor < measureDivisions) {
+      if (cursor === 0) {
+        lines.push(`      <note>`);
+        lines.push(`        <rest measure="yes"/>`);
+        lines.push(`        <duration>${measureDivisions}</duration>`);
+        lines.push(`        <voice>1</voice>`);
+        lines.push(`      </note>`);
+      } else {
+        emitRests(lines, measureDivisions - cursor);
       }
     }
 

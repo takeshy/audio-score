@@ -24,6 +24,7 @@ export interface Translations {
   stageLoadingDemucs: string;
   stageSeparating: string;
   stageLoadingModel: string;
+  stageLoadingOrt: string;
   stagePitch: string;
   stageQuantizing: string;
   stageDone: string;
@@ -40,6 +41,9 @@ export interface Translations {
   pitchRangeCutBass: string;
   pitchRangeMelody: string;
   minAmplitude: string;
+  detectorType: string;
+  detectorBasicPitch: string;
+  detectorPianoTranscription: string;
   sourceSeparation: string;
   download: string;
   demucs: string;
@@ -112,6 +116,7 @@ const en: Translations = {
   stageLoadingDemucs: "Loading Demucs WASM...",
   stageSeparating: "Separating audio...",
   stageLoadingModel: "Loading pitch model...",
+  stageLoadingOrt: "Loading ONNX Runtime...",
   stagePitch: "Detecting pitch...",
   stageQuantizing: "Quantizing durations...",
   stageDone: "Analysis complete",
@@ -127,6 +132,9 @@ const en: Translations = {
   pitchRangeCutBass: "Cut Bass (C3+)",
   pitchRangeMelody: "Melody Only (C4–C7)",
   minAmplitude: "Min Amplitude (0 = off)",
+  detectorType: "Analysis Model",
+  detectorBasicPitch: "Basic Pitch (general)",
+  detectorPianoTranscription: "Piano Transcription (piano)",
   sourceSeparation: "Source Separation (Demucs WASM)",
   download: "Download",
   demucs: "Demucs",
@@ -193,6 +201,7 @@ const ja: Translations = {
   stageLoadingDemucs: "Demucs WASM 読み込み中...",
   stageSeparating: "音源分離中...",
   stageLoadingModel: "ピッチモデル読み込み中...",
+  stageLoadingOrt: "ONNX Runtime 読み込み中...",
   stagePitch: "ピッチ検出中...",
   stageQuantizing: "音価量子化中...",
   stageDone: "解析完了",
@@ -208,6 +217,9 @@ const ja: Translations = {
   pitchRangeCutBass: "低音カット (C3以上)",
   pitchRangeMelody: "メロディのみ (C4〜C7)",
   minAmplitude: "最小振幅 (0 = 無効)",
+  detectorType: "解析モデル",
+  detectorBasicPitch: "Basic Pitch (汎用)",
+  detectorPianoTranscription: "Piano Transcription (ピアノ専用)",
   sourceSeparation: "音源分離 (Demucs WASM)",
   download: "ダウンロード",
   demucs: "Demucs",
