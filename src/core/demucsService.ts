@@ -45,21 +45,9 @@ const CHUNK_IDB_PREFIX = "demucs_chunk_";
 const WORKER_CODE = `
 (function () {
   var mod = null;
-  var workerId = Math.random().toString(36).slice(2, 6);
-  var processCount = 0;
   var NUM_STEMS = 6;
-
-  // Pre-allocated I/O buffer pointers (set by ALLOC, reused by PROCESS)
-  var allocLen = 0;
   var inL = 0, inR = 0;
   var outs = [];
-
-  function heapMB() {
-    return mod ? (mod.HEAP8.buffer.byteLength / 1048576).toFixed(1) + 'MB' : '?';
-  }
-  function log(s) {
-    console.log('[demucs-worker ' + workerId + '] ' + s);
-  }
 
   async function handle(e) {
     var msg = e.data.msg;
@@ -73,7 +61,6 @@ const WORKER_CODE = `
         wasmBinary: e.data.wasmBinaryBuffer
       }).then(function(instance) {
         mod = instance;
-        log('WASM loaded, heap=' + heapMB());
         postMessage({ msg: 'WASM_READY' });
       }).catch(function(err) {
         postMessage({ msg: 'ERROR', error: String(err) });
@@ -81,44 +68,34 @@ const WORKER_CODE = `
 
     } else if (msg === 'INIT_MODEL') {
       var rawData = new Uint8Array(e.data.modelBuffer);
-      log('modelInit start, modelSize=' + (rawData.byteLength/1048576).toFixed(1) + 'MB, heap=' + heapMB());
       var ptr = mod._malloc(rawData.byteLength);
       if (!ptr) throw new Error('_malloc failed for model (' + rawData.byteLength + ' bytes)');
       mod.HEAPU8.set(rawData, ptr);
       mod._modelInit(ptr, rawData.byteLength);
       mod._free(ptr);
-      log('modelInit done, heap=' + heapMB());
       postMessage({ msg: 'MODEL_READY' });
 
     } else if (msg === 'ALLOC') {
-      // Pre-allocate I/O buffers once for max chunk length
-      allocLen = e.data.maxLen;
-      inL = mod._malloc(allocLen * 4);
-      inR = mod._malloc(allocLen * 4);
+      var maxLen = e.data.maxLen;
+      inL = mod._malloc(maxLen * 4);
+      inR = mod._malloc(maxLen * 4);
       outs = [];
       for (var i = 0; i < NUM_STEMS; i++) {
-        outs.push(mod._malloc(allocLen * 4));
-        outs.push(mod._malloc(allocLen * 4));
+        outs.push(mod._malloc(maxLen * 4));
+        outs.push(mod._malloc(maxLen * 4));
       }
-      log('ALLOC done, maxLen=' + allocLen + ' (' + (allocLen/44100).toFixed(1) + 's), heap=' + heapMB());
       postMessage({ msg: 'ALLOC_DONE' });
 
     } else if (msg === 'PROCESS') {
-      processCount++;
       var L = new Float32Array(e.data.leftChannel);
       var R = new Float32Array(e.data.rightChannel);
       var len = L.length;
 
-      log('PROCESS #' + processCount + ' start, len=' + len + ' (' + (len/44100).toFixed(1) + 's), heap=' + heapMB());
-
-      // Copy into pre-allocated buffers
       mod.HEAPF32.set(L, inL >> 2);
       mod.HEAPF32.set(R, inR >> 2);
 
       mod._modelDemixSegment.apply(null, [inL, inR, len].concat(outs).concat([0, 1, 0]));
-      log('PROCESS #' + processCount + ' inference done, heap=' + heapMB());
 
-      // Copy results out (read from pre-allocated output buffers)
       var transfers = [];
       var channels = [];
       for (var s = 0; s < NUM_STEMS; s++) {
@@ -130,14 +107,12 @@ const WORKER_CODE = `
         transfers.push(copyL.buffer, copyR.buffer);
       }
 
-      log('PROCESS #' + processCount + ' done, posting results');
       postMessage({ msg: 'SEPARATED', channels: channels }, transfers);
     }
   }
 
   onmessage = function (e) {
     handle(e).catch(function(err) {
-      log('ERROR: ' + String(err) + ', heap=' + heapMB());
       postMessage({ msg: 'ERROR', error: String(err) });
     });
   };
@@ -190,7 +165,6 @@ const WASM_INITIAL_PAGES = 256;
  * starts small and grows via memory.grow as needed.
  */
 function patchWasmInitialMemory(buf: ArrayBuffer): ArrayBuffer {
-  console.log(`[demucs] patchWasmInitialMemory called, buf.byteLength=${buf.byteLength}`);
   const bytes = new Uint8Array(buf);
 
   // Fast scan for section id=5 (Memory)
@@ -234,12 +208,7 @@ function patchWasmInitialMemory(buf: ArrayBuffer): ArrayBuffer {
 
       // Copy and patch
       const patched = new Uint8Array(buf.slice(0));
-      console.log(`[demucs] patching initial memory at offset ${initialStart}, lebLen=${lebLen}, old=[${Array.from(bytes.slice(initialStart, initialEnd)).map(b => '0x'+b.toString(16)).join(',')}], new=[${Array.from(newBytes).map(b => '0x'+b.toString(16)).join(',')}]`);
       patched.set(newBytes, initialStart);
-      // Verify patch
-      const verify = new Uint8Array(patched.buffer.slice(initialStart, initialEnd));
-      console.log(`[demucs] verify after patch: [${Array.from(verify).map(b => '0x'+b.toString(16)).join(',')}]`);
-      console.log(`[demucs] patched WASM initial memory: ${WASM_INITIAL_PAGES} pages (${WASM_INITIAL_PAGES * 64 / 1024}MB)`);
       return patched.buffer;
     }
 
@@ -247,7 +216,6 @@ function patchWasmInitialMemory(buf: ArrayBuffer): ArrayBuffer {
   }
 
   // Memory section not found — return as-is
-  console.warn(`[demucs] Memory section (id=5) NOT FOUND in WASM binary!`);
   return buf;
 }
 
@@ -368,7 +336,6 @@ export async function separateAll(
   // ── 1. Resample ──────────────────────────────────────────────────────────
   const resampled = await resampleTo(audioBuffer, DEMUCS_SAMPLE_RATE);
   const totalFrames = resampled.length;
-  console.log(`[demucs] totalFrames=${totalFrames} (${(totalFrames/DEMUCS_SAMPLE_RATE).toFixed(1)}s), numWorkers=${numWorkers}`);
 
   // ── 2. Fetch shared assets ────────────────────────────────────────────────
   onProgress?.({ stage: "downloading_wasm", percent: 0 });
@@ -414,7 +381,6 @@ export async function separateAll(
   onProgress?.({ stage: "initializing", percent: 0 });
 
   const maxChunkLen = Math.max(...chunks.map(c => c.L!.length));
-  console.log(`[demucs] nChunks=${nChunks}, workers=${actualWorkers}, maxChunkLen=${maxChunkLen}, chunkLens=[${chunks.map(c => c.L!.length).join(',')}]`);
   const created: Worker[] = [];
   let doneCount = 0;
   let nextChunk = 0;

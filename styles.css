@@ -595,9 +595,12 @@
   align-items: center;
 }
 
+.audio-score-model-row {
+  margin-bottom: 6px;
+}
+
 .audio-score-model-select {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   padding: 4px 6px;
   font-size: 12px;
   border: 1px solid var(--as-border);

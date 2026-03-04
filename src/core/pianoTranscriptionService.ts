@@ -27,8 +27,8 @@ const ONSET_THRESHOLD = 0.3;
 const OFFSET_THRESHOLD = 0.3;
 const FRAME_THRESHOLD = 0.1;
 
-/** Number of parallel workers (each loads its own ORT session ~154MB WASM heap) */
-const NUM_WORKERS = Math.min(navigator.hardwareConcurrency ?? 2, 4);
+/** Default number of parallel ORT workers. */
+export const DEFAULT_PT_WORKERS = Math.min(navigator.hardwareConcurrency ?? 2, 4);
 
 /** Inline Web Worker code for ORT inference */
 const WORKER_CODE = `
@@ -349,6 +349,7 @@ export async function detectPitchPianoTranscription(
   audioBuffer: AudioBuffer,
   fetchAsset: (name: string) => Promise<ArrayBuffer>,
   onProgress?: (percent: number) => void,
+  numWorkersOpt?: number,
 ): Promise<DetectedNote[]> {
   onProgress?.(0);
 
@@ -381,7 +382,7 @@ export async function detectPitchPianoTranscription(
   }
 
   // --- 3. Create worker pool ---
-  const numWorkers = Math.min(NUM_WORKERS, segments.length);
+  const numWorkers = Math.min(numWorkersOpt ?? DEFAULT_PT_WORKERS, segments.length);
   const blob = new Blob([WORKER_CODE], { type: "application/javascript" });
   const blobUrl = URL.createObjectURL(blob);
   const workers: Worker[] = [];

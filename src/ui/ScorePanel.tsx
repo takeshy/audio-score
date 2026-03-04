@@ -683,7 +683,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                         </button>
                       ))}
                     </div>
-                    <div className="audio-score-demucs-actions">
+                    <div className="audio-score-model-row">
                       <select
                         className="audio-score-model-select"
                         value={settings.detectorType}
@@ -693,6 +693,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                         <option value="basic_pitch">{i.detectorBasicPitch}</option>
                         <option value="piano_transcription">{i.detectorPianoTranscription}</option>
                       </select>
+                    </div>
+                    <div className="audio-score-demucs-actions">
                       <button
                         className="audio-score-btn mod-cta"
                         onClick={runAnalysis}
