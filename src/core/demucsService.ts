@@ -5,9 +5,9 @@
  * separate audio into 6 stems (drums, bass, other, vocals, guitar, piano)
  * entirely in the browser — no server required.
  *
- * Audio is split into ~30 s overlapping chunks. A pool of 2 WASM workers
- * processes chunks in parallel. All 6 stems are extracted per chunk, then
- * crossfade-assembled.
+ * Audio is split into ~60 s overlapping chunks. A configurable pool of WASM
+ * workers processes chunks in parallel. All 6 stems are extracted per chunk,
+ * then crossfade-assembled. Single-worker mode skips chunking entirely.
  *
  * htdemucs_6s stem order:
  *   0: drums  1: bass  2: other  3: vocals  4: guitar  5: piano
@@ -235,7 +235,7 @@ export async function separateAll(
   );
   onProgress?.({ stage: "downloading_model", percent: 100 });
 
-  // ── 3. Build overlapping chunk descriptors (~30 s each) ───────────────────
+  // ── 3. Build overlapping chunk descriptors ──────────────────────────────
   const ch0 = resampled.getChannelData(0);
   const ch1 = resampled.getChannelData(resampled.numberOfChannels > 1 ? 1 : 0);
 
@@ -297,6 +297,9 @@ export async function separateAll(
       const chunk = chunks[idx];
       const L = new Float32Array(chunk.L);
       const R = new Float32Array(chunk.R);
+      // Free chunk input data (transferred to worker anyway)
+      chunk.L = null!;
+      chunk.R = null!;
       results[idx] = (await workerSend(
         w,
         { msg: "PROCESS", leftChannel: L.buffer, rightChannel: R.buffer },
@@ -314,24 +317,21 @@ export async function separateAll(
     workers.forEach(w => w.terminate());
   }
 
-  // ── 6. Crossfade-assemble output per stem ─────────────────────────────────
+  // ── 6. Crossfade-assemble output per stem (one stem at a time to save memory)
   const CF = CROSSFADE_SAMPLES;
-  const outArrays = Array.from({ length: NUM_STEMS }, () => [
-    new Float32Array(totalFrames), // L
-    new Float32Array(totalFrames), // R
-  ]);
+  const stems = {} as Record<StemName, AudioBuffer>;
 
-  for (let i = 0; i < results.length; i++) {
-    const { inputStart, coreStart, coreEnd } = chunks[i];
-    const isFirst = i === 0;
-    const isLast  = i === results.length - 1;
-    const chans = results[i].channels;
+  for (let s = 0; s < NUM_STEMS; s++) {
+    const outL = new Float32Array(totalFrames);
+    const outR = new Float32Array(totalFrames);
 
-    for (let s = 0; s < NUM_STEMS; s++) {
+    for (let i = 0; i < results.length; i++) {
+      const { inputStart, coreStart, coreEnd } = chunks[i];
+      const isFirst = i === 0;
+      const isLast  = i === results.length - 1;
+      const chans = results[i].channels;
       const resL = new Float32Array(chans[s * 2]);
       const resR = new Float32Array(chans[s * 2 + 1]);
-      const outL = outArrays[s][0];
-      const outR = outArrays[s][1];
 
       if (!isFirst) {
         const fStart = coreStart - CF;
@@ -360,16 +360,13 @@ export async function separateAll(
         }
       }
     }
-  }
 
-  // ── 7. Build output AudioBuffers ──────────────────────────────────────────
-  const stems = {} as Record<StemName, AudioBuffer>;
-  for (let s = 0; s < NUM_STEMS; s++) {
     const outBuf = new OfflineAudioContext(2, totalFrames, DEMUCS_SAMPLE_RATE)
       .createBuffer(2, totalFrames, DEMUCS_SAMPLE_RATE);
-    outBuf.copyToChannel(outArrays[s][0], 0);
-    outBuf.copyToChannel(outArrays[s][1], 1);
+    outBuf.copyToChannel(outL, 0);
+    outBuf.copyToChannel(outR, 1);
     stems[STEM_NAMES[s]] = outBuf;
+    // outL/outR are now GC-eligible before next stem iteration
   }
 
   return stems;
