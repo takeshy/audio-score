@@ -57,3 +57,22 @@ export async function getTemporary(key: string): Promise<Blob | string | null> {
     };
   });
 }
+
+/**
+ * Delete a value from IndexedDB by key.
+ */
+export async function deleteTemporary(key: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).delete(key);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
