@@ -1,7 +1,7 @@
 {
   "id": "audio-score",
   "name": "Audio Score - Audio to Sheet Music",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "minAppVersion": "1.0.0",
   "description": "Analyze audio files and display detected notes as sheet music on a staff. Supports local and Drive audio files.",
   "author": "takeshy",
