@@ -272,14 +272,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       setPhase("done");
 
       const baseName = fileName.replace(/\.[^.]+$/, "");
-      saveTemporary(`${baseName}.json`, JSON.stringify(scoreData)).catch(() => {});
-      api.drive.createFile(`${baseName}.audioscore`, JSON.stringify(scoreData)).catch(() => {});
+      const stemSuffix = demucsStem ? `_${demucsStem}` : "";
+      saveTemporary(`${baseName}${stemSuffix}.json`, JSON.stringify(scoreData)).catch(() => {});
+      api.drive.createFile(`${baseName}${stemSuffix}.audioscore`, JSON.stringify(scoreData)).catch(() => {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`${i.errorAnalysis}: ${msg}`);
       setPhase("error");
     }
-  }, [settings, bpmInput, i, api, fileName]);
+  }, [settings, bpmInput, i, api, fileName, demucsStem]);
 
   /**
    * Run Demucs separateAll to get all 6 stems at once.
@@ -436,9 +437,10 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       const updatedScore = { ...score, chordAnnotations: annotations };
       setScore(updatedScore);
       const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
+      const stemSuffix = demucsStem ? `_${demucsStem}` : "";
       const json = JSON.stringify(updatedScore);
-      saveTemporary(`${baseName}.json`, json).catch(() => {});
-      api.drive.createFile(`${baseName}.audioscore`, json).catch(() => {});
+      saveTemporary(`${baseName}${stemSuffix}.json`, json).catch(() => {});
+      api.drive.createFile(`${baseName}${stemSuffix}.audioscore`, json).catch(() => {});
 
       showAiSuccess(i.aiChordsSuccess);
     } catch (err) {
@@ -446,7 +448,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     } finally {
       setAiLoading("");
     }
-  }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
+  }, [score, aiLoading, api.gemini, i, fileName, demucsStem, showAiSuccess, showAiError, api.drive]);
 
   /**
    * AI: Improve score (remove ML artifacts)
@@ -465,7 +467,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
         setChordAnnotations(improved.chordAnnotations ?? []);
 
         const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
-        const improvedName = `${baseName}_improved`;
+        const stemSuffix = demucsStem ? `_${demucsStem}` : "";
+        const improvedName = `${baseName}${stemSuffix}_improved`;
         const json = JSON.stringify(improved);
         saveTemporary(`${improvedName}.json`, json).catch(() => {});
         api.drive.createFile(`${improvedName}.audioscore`, json).catch(() => {});
@@ -478,7 +481,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       setAiLoading("");
       setAiProgress(null);
     }
-  }, [score, aiLoading, api.gemini, i, fileName, showAiSuccess, showAiError, api.drive]);
+  }, [score, aiLoading, api.gemini, i, fileName, demucsStem, showAiSuccess, showAiError, api.drive]);
 
   /**
    * Convert to MusicXML and download.
@@ -492,14 +495,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       const a = document.createElement("a");
       a.href = url;
       const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
-      a.download = `${baseName}.musicxml`;
+      const stemSuffix = demucsStem ? `_${demucsStem}` : "";
+      a.download = `${baseName}${stemSuffix}.musicxml`;
       a.click();
       URL.revokeObjectURL(url);
       showAiSuccess(i.aiMusicXMLSuccess);
     } catch (err) {
       showAiError(err);
     }
-  }, [score, fileName, i, showAiSuccess, showAiError]);
+  }, [score, fileName, demucsStem, i, showAiSuccess, showAiError]);
 
   /**
    * Export the selected stem as a WAV file (from cached buffers).
@@ -547,6 +551,9 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
 
   // Whether audio is loaded (and we can run Demucs or Analyze)
   const audioLoaded = phase === "loaded" || phase === "analyzing" || phase === "done";
+
+  // Hide Demucs on mobile (WASM OOM)
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   return (
     <div
@@ -611,87 +618,91 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
         {/* Source Separation + Analyze — shown once audio is decoded */}
         {audioLoaded && (
           <div className="audio-score-demucs-section">
-            {/* Primary action: Source Separation */}
-            {!demucsDone && (
+            {/* Demucs: hidden on mobile (WASM OOM) */}
+            {!isMobile && (
               <>
-                <div className="audio-score-workers-row">
-                  <label className="audio-score-workers-label">Workers</label>
-                  <select
-                    className="audio-score-workers-select"
-                    value={demucsWorkers}
-                    onChange={(e) => setDemucsWorkers(Number(e.target.value))}
-                    disabled={demucsRunning}
-                  >
-                    {[1, 2, 3, 4].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  className={`audio-score-btn mod-cta audio-score-load-btn${demucsRunning ? " is-loading" : ""}`}
-                  onClick={handleDemucsRun}
-                  disabled={demucsRunning || phase === "analyzing"}
-                >
-                  {demucsRunning ? i.stageSeparating : i.sourceSeparation}
-                </button>
-              </>
-            )}
-            {demucsRunning && (
-              <div className="audio-score-progress">
-                <div className="audio-score-progress-bar">
-                  <div className="audio-score-progress-fill" style={{ width: `${demucsProgress}%` }} />
-                </div>
-              </div>
-            )}
-            {demucsError && <div className="audio-score-error">{demucsError}</div>}
-
-            {/* After separation: stem selector + Analyze / Download / Play */}
-            {demucsDone && (
-              <>
-                <div className="audio-score-stem-grid">
-                  {STEM_NAMES.map((stem) => (
+                {!demucsDone && (
+                  <>
+                    <div className="audio-score-workers-row">
+                      <label className="audio-score-workers-label">Workers</label>
+                      <select
+                        className="audio-score-workers-select"
+                        value={demucsWorkers}
+                        onChange={(e) => setDemucsWorkers(Number(e.target.value))}
+                        disabled={demucsRunning}
+                      >
+                        {[1, 2].map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </div>
                     <button
-                      key={stem}
-                      className={`audio-score-stem-btn${demucsStem === stem ? " is-selected" : ""}`}
-                      onClick={() => {
-                        setDemucsStem(stem);
-                        demucsBufferRef.current = stemBuffers.current.get(stem) ?? null;
-                      }}
+                      className={`audio-score-btn mod-cta audio-score-load-btn${demucsRunning ? " is-loading" : ""}`}
+                      onClick={handleDemucsRun}
+                      disabled={demucsRunning || phase === "analyzing"}
                     >
-                      <span className="audio-score-stem-name">{stem}</span>
+                      {demucsRunning ? i.stageSeparating : i.sourceSeparation}
                     </button>
-                  ))}
-                </div>
-                <div className="audio-score-demucs-actions">
-                  <button
-                    className="audio-score-btn mod-cta"
-                    onClick={runAnalysis}
-                    disabled={phase === "analyzing" || !demucsStem}
-                  >
-                    {phase === "analyzing" ? i.analyzing : i.analyze}
-                  </button>
-                  <button
-                    className="audio-score-btn"
-                    onClick={handleStemExport}
-                    disabled={!demucsStem}
-                  >
-                    {i.download}
-                  </button>
-                  <button
-                    className="audio-score-btn"
-                    onClick={handleStemPlayStop}
-                    disabled={!demucsStem}
-                  >
-                    {stemPlaying ? i.stop : i.play}
-                  </button>
-                </div>
+                  </>
+                )}
+                {demucsRunning && (
+                  <div className="audio-score-progress">
+                    <div className="audio-score-progress-bar">
+                      <div className="audio-score-progress-fill" style={{ width: `${demucsProgress}%` }} />
+                    </div>
+                  </div>
+                )}
+                {demucsError && <div className="audio-score-error">{demucsError}</div>}
+
+                {/* After separation: stem selector + Analyze / Download / Play */}
+                {demucsDone && (
+                  <>
+                    <div className="audio-score-stem-grid">
+                      {STEM_NAMES.map((stem) => (
+                        <button
+                          key={stem}
+                          className={`audio-score-stem-btn${demucsStem === stem ? " is-selected" : ""}`}
+                          onClick={() => {
+                            setDemucsStem(stem);
+                            demucsBufferRef.current = stemBuffers.current.get(stem) ?? null;
+                          }}
+                        >
+                          <span className="audio-score-stem-name">{stem}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="audio-score-demucs-actions">
+                      <button
+                        className="audio-score-btn mod-cta"
+                        onClick={runAnalysis}
+                        disabled={phase === "analyzing" || !demucsStem}
+                      >
+                        {phase === "analyzing" ? i.analyzing : i.analyze}
+                      </button>
+                      <button
+                        className="audio-score-btn"
+                        onClick={handleStemExport}
+                        disabled={!demucsStem}
+                      >
+                        {i.download}
+                      </button>
+                      <button
+                        className="audio-score-btn"
+                        onClick={handleStemPlayStop}
+                        disabled={!demucsStem}
+                      >
+                        {stemPlaying ? i.stop : i.play}
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
-            {/* Skip separation: analyze raw audio directly */}
-            {!demucsDone && !demucsRunning && (
+            {/* Analyze button: secondary on desktop (skip separation), primary on mobile */}
+            {(!demucsDone && !demucsRunning) && (
               <button
-                className="audio-score-btn audio-score-analyze-secondary"
+                className={isMobile ? "audio-score-btn mod-cta audio-score-load-btn" : "audio-score-btn audio-score-analyze-secondary"}
                 onClick={runAnalysis}
                 disabled={phase === "analyzing"}
               >
