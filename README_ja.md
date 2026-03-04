@@ -13,6 +13,7 @@
 - **自動音楽解析** — BPM検出、調号判定（Krumhansl-Schmuckler）、音部記号選択、拍子量子化
 - **五線譜レンダリング** — Canvas ベースの楽譜表示（符頭、臨時記号、加線、小節線）
 - **スコア再生** — Web Audio API による検出ノートの再生
+- **MusicXMLインポート** — MuseScoreで編集した `.musicxml` ファイルをファイル選択、ドラッグ＆ドロップ、Driveから再取り込み
 - **エクスポート** — MusicXML、PDF、テキストスコア、ステムWAVダウンロード
 - **AI改善** — Gemini連携によるコード解析・スコア改善（オプション）
 - **多言語UI** — 日本語・英語
@@ -31,11 +32,12 @@ plugins/audio-score/
 ## 使い方
 
 1. GemiHub サイドバーで Audio Score パネルを開く
-2. **Load** をクリック、またはオーディオファイル（MP3、WAV 等）をドラッグ＆ドロップ
-3. 検出モデルを選択（Basic Pitch または Piano Transcription）
+2. **Load** をクリック、またはオーディオファイル（MP3、WAV 等）や `.musicxml` ファイルをドラッグ＆ドロップ
+3. オーディオファイルの場合、検出モデルを選択（Basic Pitch または Piano Transcription）
 4. 必要に応じて音源分離を有効にしてステムを分離
 5. **Analyze** をクリック — 解析完了後に楽譜が表示される
 6. ツールバーから再生、MusicXML/PDFエクスポート、ステムダウンロードが可能
+7. エクスポートしたMusicXMLをMuseScoreで編集し、再インポートしてスコアを更新
 
 ## アーキテクチャ
 
@@ -50,6 +52,7 @@ src/
 │   ├── demucsService.ts              # Demucs WASM 音源分離
 │   ├── musicTheory.ts                # BPM、調、量子化、小節分割
 │   ├── noteSegmenter.ts              # DetectedNote[] → ScoreData パイプライン
+│   ├── musicXmlImport.ts              # MusicXML インポートパーサ
 │   ├── aiService.ts                  # Gemini AI + MusicXML エクスポート
 │   ├── scoreParser.ts                # スコアテキスト形式パーサ
 │   └── player.ts                     # Web Audio 再生
