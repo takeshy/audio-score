@@ -43,7 +43,7 @@ class AudioScorePlugin {
       id: "audio-score-main",
       name: "Audio Score",
       location: "main",
-      extensions: [".audioscore", ".musicxml"],
+      extensions: [".audioscore", ".mid", ".midi"],
       component: MainView,
     });
 

@@ -78,8 +78,6 @@ export interface Translations {
   aiSimplifyBass: string;
   aiSimplifySimplified: string;
   aiSimplifySuccess: string;
-  aiMusicXML: string;
-  aiMusicXMLSuccess: string;
   aiImprove: string;
   aiImproveLoading: string;
   aiImproveFiltering: string;
@@ -88,6 +86,9 @@ export interface Translations {
   // PDF export
   savePdf: string;
   savePdfSuccess: string;
+  // MIDI
+  midiExport: string;
+  midiExportSuccess: string;
   // Main view
   mainViewEmpty: string;
 }
@@ -165,8 +166,6 @@ const en: Translations = {
   aiSimplifyBass: "Bass only",
   aiSimplifySimplified: "Simplified",
   aiSimplifySuccess: "Score simplified",
-  aiMusicXML: "MusicXML",
-  aiMusicXMLSuccess: "MusicXML downloaded",
   aiImprove: "Improve",
   aiImproveLoading: "Improving...",
   aiImproveFiltering: "Filtering artifacts...",
@@ -174,6 +173,8 @@ const en: Translations = {
   aiError: "AI processing failed",
   savePdf: "PDF",
   savePdfSuccess: "PDF saved",
+  midiExport: "MIDI",
+  midiExportSuccess: "MIDI downloaded",
   mainViewEmpty: "Load an audio file from the sidebar",
 };
 
@@ -250,8 +251,6 @@ const ja: Translations = {
   aiSimplifyBass: "ベースのみ",
   aiSimplifySimplified: "簡略化",
   aiSimplifySuccess: "楽譜を簡略化しました",
-  aiMusicXML: "MusicXML",
-  aiMusicXMLSuccess: "MusicXML をダウンロードしました",
   aiImprove: "改善",
   aiImproveLoading: "改善中...",
   aiImproveFiltering: "アーティファクト除去中...",
@@ -259,6 +258,8 @@ const ja: Translations = {
   aiError: "AI 処理に失敗しました",
   savePdf: "PDF",
   savePdfSuccess: "PDF を保存しました",
+  midiExport: "MIDI",
+  midiExportSuccess: "MIDI をダウンロードしました",
   mainViewEmpty: "サイドバーから音声ファイルを読み込んでください",
 };
 

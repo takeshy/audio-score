@@ -15,7 +15,6 @@ import {
   ChordAnnotation,
   analyzeChords,
   improveScore,
-  convertToMusicXML,
 } from "../core/aiService";
 import { setState, useStore } from "../store";
 
@@ -131,15 +130,36 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   // Whether the currently open file is an audio file
   const isCurrentFileAudio = !!(activeFileId && activeFileName && AUDIO_EXTS.test(activeFileName));
 
-  // Auto-load if the currently open file is a .audioscore or .musicxml
+  // Auto-load if the currently open file is a .audioscore or .mid
   React.useEffect(() => {
     if (!activeFileId || !activeFileName) return;
     const isAudioScore = activeFileName.endsWith(".audioscore");
-    const isMusicXml = activeFileName.endsWith(".musicxml") || activeFileName.endsWith(".xml");
-    if (!isAudioScore && !isMusicXml) return;
+    const isMidi = activeFileName.endsWith(".mid") || activeFileName.endsWith(".midi");
+    if (!isAudioScore && !isMidi) return;
 
     setPhase("loading");
     setError("");
+
+    if (isMidi) {
+      fetch(`/api/drive/files?action=raw&fileId=${encodeURIComponent(activeFileId)}`)
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+        .then(
+          async (buf) => {
+            try {
+              const { parseMidi } = await import("../core/midiImport");
+              const parsed = parseMidi(new Uint8Array(buf));
+              setScore(parsed);
+              setChordAnnotations([]);
+              setFileName(activeFileName.replace(/\.(mid|midi)$/, ""));
+              setPhase("done");
+            } catch {
+              setPhase("idle");
+            }
+          },
+          () => { setPhase("idle"); },
+        );
+      return;
+    }
 
     const loadText = api.drive.readFile
       ? api.drive.readFile(activeFileId)
@@ -149,17 +169,11 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     loadText.then(
       async (text) => {
         try {
-          let parsed: ScoreData;
-          if (isMusicXml) {
-            const { parseMusicXML } = await import("../core/musicXmlImport");
-            parsed = parseMusicXML(text);
-          } else {
-            parsed = JSON.parse(text) as ScoreData;
-          }
+          const parsed = JSON.parse(text) as ScoreData;
           if (parsed && parsed.measures) {
             setScore(parsed);
             setChordAnnotations(parsed.chordAnnotations ?? []);
-            setFileName(activeFileName.replace(/\.(audioscore|musicxml|xml)$/, ""));
+            setFileName(activeFileName.replace(/\.audioscore$/, ""));
             setPhase("done");
           } else {
             setPhase("idle");
@@ -368,15 +382,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
    */
   const loadFile = React.useCallback(
     (file: File) => {
-      if (file.name.endsWith(".musicxml") || file.name.endsWith(".xml")) {
-        file.text().then(
-          async (xml) => {
+      if (file.name.endsWith(".mid") || file.name.endsWith(".midi")) {
+        file.arrayBuffer().then(
+          async (buf) => {
             try {
-              const { parseMusicXML } = await import("../core/musicXmlImport");
-              const parsed = parseMusicXML(xml);
+              const { parseMidi } = await import("../core/midiImport");
+              const parsed = parseMidi(new Uint8Array(buf));
               setScore(parsed);
-              setChordAnnotations(parsed.chordAnnotations ?? []);
-              setFileName(file.name.replace(/\.(musicxml|xml)$/, ""));
+              setChordAnnotations([]);
+              setFileName(file.name.replace(/\.(mid|midi)$/, ""));
               setPhase("done");
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
@@ -548,22 +562,18 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   }, [score, aiLoading, api.gemini, i, fileName, demucsStem, showAiSuccess, showAiError, api.drive]);
 
   /**
-   * Convert to MusicXML and download.
+   * Export score as MIDI file.
    */
-  const handleMusicXML = React.useCallback(() => {
+  const handleMidiExport = React.useCallback(() => {
     if (!score) return;
     try {
-      const xml = convertToMusicXML(score);
-      const blob = new Blob([xml], { type: "application/vnd.recordare.musicxml+xml" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
+      const { exportScoreToMidi } = require("../core/midiExport");
+      const midiData = exportScoreToMidi(score);
+      const blob = new Blob([midiData], { type: "audio/midi" });
       const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
       const stemSuffix = demucsStem ? `_${demucsStem}` : "";
-      a.download = `${baseName}${stemSuffix}.musicxml`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showAiSuccess(i.aiMusicXMLSuccess);
+      downloadBlob(blob, `${baseName}${stemSuffix}.mid`);
+      showAiSuccess(i.midiExportSuccess);
     } catch (err) {
       showAiError(err);
     }
@@ -636,7 +646,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
           <input
             ref={fileInputRef}
             type="file"
-            accept="audio/*,.musicxml,.xml"
+            accept="audio/*,.mid,.midi"
             onChange={handleFileChange}
             style={{ display: "none" }}
           />
@@ -890,8 +900,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 <button className="audio-score-btn" onClick={handlePlayStop}>
                   {playing ? i.stop : i.play}
                 </button>
-                <button className="audio-score-btn" onClick={handleMusicXML}>
-                  {i.aiMusicXML}
+                <button className="audio-score-btn" onClick={handleMidiExport}>
+                  {i.midiExport}
                 </button>
               </div>
             )}
