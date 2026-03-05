@@ -19,23 +19,31 @@ export interface PlaybackHandle {
  * current playback position, so scores of any length can be played without
  * hitting browser AudioNode limits.
  */
-export function playScore(score: ScoreData): PlaybackHandle {
+export function playScore(score: ScoreData, startMeasure?: number): PlaybackHandle {
   const ctx = new AudioContext();
   let stopped = false;
 
   const beatDuration = 60 / score.bpm;
-  const baseTime = ctx.currentTime + 0.1;
 
   // How far ahead (seconds) to schedule notes
   const SCHEDULE_AHEAD = 1.0;
   // How often (ms) the scheduler runs
   const SCHEDULER_INTERVAL = 200;
 
-  // Flatten all playable notes, sorted by startTime
-  const allNotes = score.measures
+  // Flatten all playable notes from startMeasure onwards, sorted by startTime
+  const filteredMeasures = startMeasure != null
+    ? score.measures.filter((m) => m.number >= startMeasure)
+    : score.measures;
+  const allNotes = filteredMeasures
     .flatMap((m) => m.notes)
     .filter((n) => n.midi >= 0)
     .sort((a, b) => a.startTime - b.startTime);
+
+  // Offset so playback starts at the first note's time (skips downbeatOffset silence)
+  const timeOffset = allNotes.length > 0 && startMeasure != null
+    ? allNotes[0].startTime
+    : 0;
+  const baseTime = ctx.currentTime + 0.1 - timeOffset;
 
   let nextIndex = 0;
   let lastEnd = 0;

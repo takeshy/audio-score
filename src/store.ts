@@ -13,11 +13,12 @@ export interface StoreState {
   chordAnnotations: ChordAnnotation[];
   fileName: string;
   playbackHandle: PlaybackHandle | null;
+  playFromMeasure: number | null;
 }
 
 type Listener = (state: StoreState) => void;
 
-let state: StoreState = { score: null, chordAnnotations: [], fileName: "", playbackHandle: null };
+let state: StoreState = { score: null, chordAnnotations: [], fileName: "", playbackHandle: null, playFromMeasure: null };
 const listeners = new Set<Listener>();
 
 export function getState(): StoreState {

@@ -17,7 +17,7 @@ import {
   improveScore,
   convertToMusicXML,
 } from "../core/aiService";
-import { setState } from "../store";
+import { setState, useStore } from "../store";
 
 interface PluginAPI {
   language?: string;
@@ -201,6 +201,27 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   React.useEffect(() => { setState({ score }); }, [score]);
   React.useEffect(() => { setState({ chordAnnotations }); }, [chordAnnotations]);
   React.useEffect(() => { setState({ fileName }); }, [fileName]);
+
+  // Watch playFromMeasure from store (set by MainView canvas click)
+  const { playFromMeasure } = useStore();
+  React.useEffect(() => {
+    if (playFromMeasure == null || !score) return;
+    // Stop current playback
+    if (playbackRef.current) {
+      playbackRef.current.stop();
+      playbackRef.current = null;
+    }
+    const handle = playScore(score, playFromMeasure);
+    playbackRef.current = handle;
+    setState({ playbackHandle: handle, playFromMeasure: null });
+    setPlaying(true);
+    handle.finished.then(() => {
+      if (playbackRef.current !== handle) return;
+      playbackRef.current = null;
+      setState({ playbackHandle: null });
+      setPlaying(false);
+    });
+  }, [playFromMeasure, score]);
 
   const progressLabel = (p: AnalysisProgress): string => {
     const labels: Record<AnalysisProgress["stage"], string> = {
@@ -446,6 +467,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
     setPlaying(true);
 
     handle.finished.then(() => {
+      if (playbackRef.current !== handle) return;
       playbackRef.current = null;
       setState({ playbackHandle: null });
       setPlaying(false);

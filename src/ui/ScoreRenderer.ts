@@ -10,6 +10,8 @@ import {
   ClefType,
   KeySignature,
   Measure,
+  DurationType,
+  DURATION_BEATS,
 } from "../types";
 import { midiToStaffPosition, getAccidental } from "../core/musicTheory";
 import type { ChordAnnotation } from "../core/aiService";
@@ -26,12 +28,12 @@ const RIGHT_MARGIN = 10;
 const CLEF_WIDTH = 35;
 const KEY_SIG_WIDTH = 14; // per accidental
 const TIME_SIG_WIDTH = 24;
-const NOTE_HEAD_RX = 5; // horizontal radius
-const NOTE_HEAD_RY = 3.5; // vertical radius
-const STEM_LENGTH = 30;
-const FLAG_LENGTH = 12;
+const NOTE_HEAD_RX = 4; // horizontal radius
+const NOTE_HEAD_RY = 3; // vertical radius
+const STEM_LENGTH = 28;
+const FLAG_LENGTH = 10;
 const BARLINE_GAP = 8; // space before/after barline
-const SYSTEM_GAP = 70; // vertical gap between systems
+const SYSTEM_GAP = 140; // vertical gap between systems
 const BAR_LINE_EXTRA = 2;
 
 /** Duration-proportional width units (quarter note = 1.0) */
@@ -44,21 +46,73 @@ const DURATION_WIDTH: Record<string, number> = {
   thirty_second: 0.35,
 };
 
-/** Compute the width a beat group occupies in pixels given a base unit. */
-function beatWidth(bg: BeatGroup, unit: number): number {
+/** Compute width units for a single beat group. */
+function beatUnits(bg: BeatGroup): number {
   const base = DURATION_WIDTH[bg.durationType] ?? 1.0;
-  return (bg.dotted ? base * 1.3 : base) * unit;
+  return bg.dotted ? base * 1.3 : base;
 }
 
-/** Compute width of a measure in "beat units". */
-function measureBeats(measure: Measure): number {
-  const groups = groupBeats(measure.notes);
-  let total = 0;
-  for (const bg of groups) {
-    const base = DURATION_WIDTH[bg.durationType] ?? 1.0;
-    total += bg.dotted ? base * 1.3 : base;
+/** Rest duration types, largest first. */
+const REST_TYPES: DurationType[] = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second"];
+
+function makeRest(startTime: number, durationSec: number, durationType: DurationType): DetectedNote {
+  return { midi: -1, name: "rest", startTime, duration: durationSec, durationType, dotted: false, frequency: 0, amplitude: 0 };
+}
+
+/**
+ * Ensure every measure has rests filling gaps between notes.
+ * Skips measures that already contain rests.
+ */
+function ensureRests(score: ScoreData): void {
+  const beatDur = 60 / score.bpm;
+  const measureDur = beatDur * score.beatsPerMeasure;
+  const downbeat = score.downbeatOffset ?? 0;
+
+  for (const measure of score.measures) {
+    // Skip if already has rests
+    if (measure.notes.some((n) => n.midi < 0)) continue;
+
+    const mStart = downbeat + (measure.number - 1) * measureDur;
+    const mEnd = mStart + measureDur;
+    const sorted = [...measure.notes].sort((a, b) => a.startTime - b.startTime);
+    const filled: DetectedNote[] = [];
+    let cursor = mStart;
+    const tol = beatDur * 0.06;
+
+    let i = 0;
+    while (i < sorted.length) {
+      const noteStart = sorted[i].startTime;
+      // Fill gap before this note
+      if (noteStart > cursor + tol) {
+        emitRests(filled, cursor, noteStart, beatDur);
+      }
+      // Collect chord (simultaneous notes)
+      let maxEnd = 0;
+      while (i < sorted.length && Math.abs(sorted[i].startTime - noteStart) < tol) {
+        filled.push(sorted[i]);
+        maxEnd = Math.max(maxEnd, sorted[i].startTime + sorted[i].duration);
+        i++;
+      }
+      cursor = Math.max(cursor, maxEnd);
+    }
+    // Fill gap at end
+    if (mEnd > cursor + tol) {
+      emitRests(filled, cursor, mEnd, beatDur);
+    }
+    measure.notes = filled;
   }
-  return Math.max(total, 0.5);
+}
+
+function emitRests(out: DetectedNote[], from: number, to: number, beatDur: number): void {
+  let cursor = from;
+  const tol = beatDur * 0.06;
+  for (const rt of REST_TYPES) {
+    const dur = DURATION_BEATS[rt] * beatDur;
+    while (cursor + dur <= to + tol) {
+      out.push(makeRest(cursor, dur, rt));
+      cursor += dur;
+    }
+  }
 }
 
 export interface RenderOptions {
@@ -88,12 +142,13 @@ export function calculateSize(
   options: RenderOptions
 ): { width: number; height: number } {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  ensureRests(score);
   const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
   const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
   const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
-  const { systems, canvasWidth } = layoutSystems(score, opts, topMargin, systemGap);
-  const height = systems.length * (STAFF_HEIGHT + systemGap) + topMargin + BOTTOM_MARGIN;
-  return { width: canvasWidth, height };
+  const layout = layoutSystems(score, opts, topMargin, systemGap);
+  const height = layout.systems.length * (STAFF_HEIGHT + systemGap) + topMargin + BOTTOM_MARGIN;
+  return { width: layout.canvasWidth, height };
 }
 
 export interface SystemLayout {
@@ -101,78 +156,25 @@ export interface SystemLayout {
   y: number; // top of staff
 }
 
-/**
- * Minimum noteUnit so the smallest note (thirty_second = 0.35 units) still
- * occupies enough pixels for a note head + accidental + padding.
- * MIN_NOTE_PX / smallest duration width = 24 / 0.35 ≈ 69.
- */
-const MIN_NOTE_UNIT = 69;
+/** Fixed number of measures per system. */
+const MEASURES_PER_SYSTEM = 3;
 
 function layoutSystems(
   score: ScoreData,
   opts: Required<RenderOptions>,
   topMargin: number = TOP_MARGIN,
   systemGap: number = SYSTEM_GAP,
-): { systems: SystemLayout[]; noteUnit: number; canvasWidth: number } {
-  // Decoration width that appears on every system
-  const decorWidth =
-    LEFT_MARGIN + RIGHT_MARGIN + CLEF_WIDTH +
-    Math.abs(score.key.accidentals) * KEY_SIG_WIDTH;
-  // Time signature only on the first system
-  const firstSystemExtra = TIME_SIG_WIDTH;
-
-  const viewWidth = opts.width;
-  const availableWidth = viewWidth - decorWidth;
-
-  // Compute noteUnit targeting ~4 measures per system.
-  const allBeats = score.measures.map(measureBeats);
-  const avgBeats = allBeats.reduce((a, b) => a + b, 0) / Math.max(allBeats.length, 1);
-  const targetMeasures = 4;
-  const barlinePixels = targetMeasures * BARLINE_GAP * 2;
-  const noteSpace = availableWidth - barlinePixels;
-  let noteUnit = Math.max(MIN_NOTE_UNIT, noteSpace / (avgBeats * targetMeasures));
-  // Cap upper bound so notes don't get absurdly wide
-  noteUnit = Math.min(noteUnit, 60);
-
-  // Pack measures into systems; if a single measure exceeds viewWidth, that's OK —
-  // the canvas will be wider than the container and scroll horizontally.
+): { systems: SystemLayout[]; canvasWidth: number } {
   const systems: SystemLayout[] = [];
-  let currentMeasures: Measure[] = [];
-  let currentWidth = 0;
-  let maxSystemWidth = 0;
 
-  for (let i = 0; i < score.measures.length; i++) {
-    const measure = score.measures[i];
-    const mw = measureBeats(measure) * noteUnit + BARLINE_GAP * 2;
-    const isFirstSystem = systems.length === 0;
-    const maxWidth = isFirstSystem ? availableWidth - firstSystemExtra : availableWidth;
-    if (currentWidth + mw > maxWidth && currentMeasures.length > 0) {
-      maxSystemWidth = Math.max(maxSystemWidth, currentWidth + decorWidth +
-        (systems.length === 0 ? firstSystemExtra : 0));
-      systems.push({
-        measures: currentMeasures,
-        y: topMargin + systems.length * (STAFF_HEIGHT + systemGap),
-      });
-      currentMeasures = [];
-      currentWidth = 0;
-    }
-    currentMeasures.push(measure);
-    currentWidth += mw;
-  }
-
-  if (currentMeasures.length > 0) {
-    maxSystemWidth = Math.max(maxSystemWidth, currentWidth + decorWidth +
-      (systems.length === 0 ? firstSystemExtra : 0));
+  for (let i = 0; i < score.measures.length; i += MEASURES_PER_SYSTEM) {
     systems.push({
-      measures: currentMeasures,
+      measures: score.measures.slice(i, i + MEASURES_PER_SYSTEM),
       y: topMargin + systems.length * (STAFF_HEIGHT + systemGap),
     });
   }
 
-  // Canvas width: at least the container width, but wider if any system needs it
-  const canvasWidth = Math.max(viewWidth, maxSystemWidth);
-
-  return { systems, noteUnit, canvasWidth };
+  return { systems, canvasWidth: opts.width };
 }
 
 /**
@@ -183,7 +185,6 @@ export function getSystemLayouts(
   opts: RenderOptions,
 ): {
   systems: SystemLayout[];
-  noteUnit: number;
   canvasWidth: number;
   staffHeight: number;
   systemGap: number;
@@ -191,13 +192,13 @@ export function getSystemLayouts(
   bottomMargin: number;
 } {
   const fullOpts = { ...DEFAULT_OPTIONS, ...opts };
+  ensureRests(score);
   const hasChords = fullOpts.chordAnnotations && fullOpts.chordAnnotations.length > 0;
   const topM = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
   const sysGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
-  const { systems, noteUnit, canvasWidth } = layoutSystems(score, fullOpts, topM, sysGap);
+  const { systems, canvasWidth } = layoutSystems(score, fullOpts, topM, sysGap);
   return {
     systems,
-    noteUnit,
     canvasWidth,
     staffHeight: STAFF_HEIGHT,
     systemGap: sysGap,
@@ -218,7 +219,10 @@ export function renderScore(
   const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
   const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
   const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
-  const { systems, noteUnit, canvasWidth } = layoutSystems(score, opts, topMargin, systemGap);
+  // Ensure rests are present in measure data
+  ensureRests(score);
+
+  const { systems, canvasWidth } = layoutSystems(score, opts, topMargin, systemGap);
 
   // Clear
   ctx.fillStyle = opts.backgroundColor;
@@ -233,7 +237,7 @@ export function renderScore(
   }
 
   for (const system of systems) {
-    renderSystem(ctx, score, system, renderOpts, noteUnit);
+    renderSystem(ctx, score, system, renderOpts);
   }
 }
 
@@ -242,7 +246,6 @@ function renderSystem(
   score: ScoreData,
   system: SystemLayout,
   opts: Required<RenderOptions>,
-  noteUnit: number,
 ): void {
   const staffTop = system.y;
   const staffLeft = LEFT_MARGIN;
@@ -252,28 +255,40 @@ function renderSystem(
   drawStaffLines(ctx, staffLeft, staffTop, staffRight, opts.staffColor);
 
   // Draw clef
-  let x = staffLeft + 5;
-  drawClef(ctx, x, staffTop, score.clef, opts.noteColor);
-  x += CLEF_WIDTH;
+  let decorEndX = staffLeft + 5;
+  drawClef(ctx, decorEndX, staffTop, score.clef, opts.noteColor);
+  decorEndX += CLEF_WIDTH;
 
   // Draw key signature
-  x = drawKeySignature(ctx, x, staffTop, score.key.accidentals, score.clef, opts.noteColor);
+  decorEndX = drawKeySignature(ctx, decorEndX, staffTop, score.key.accidentals, score.clef, opts.noteColor);
 
   // Draw time signature (only on first system)
   if (system.measures[0]?.number === 1) {
-    drawTimeSignature(ctx, x, staffTop, score.beatsPerMeasure, score.beatUnit, opts.noteColor);
-    x += TIME_SIG_WIDTH;
+    drawTimeSignature(ctx, decorEndX, staffTop, score.beatsPerMeasure, score.beatUnit, opts.noteColor);
+    decorEndX += TIME_SIG_WIDTH;
   }
 
-  // Draw measures with proportional spacing
-  let noteX = x + BARLINE_GAP;
+  // Equal-width measure layout
+  const numMeasures = system.measures.length;
+  const measureWidth = (staffRight - decorEndX) / numMeasures;
+
   const chordAnns = opts.chordAnnotations ?? [];
-  for (let mi = 0; mi < system.measures.length; mi++) {
+  for (let mi = 0; mi < numMeasures; mi++) {
     const measure = system.measures[mi];
+    const measureStartX = decorEndX + mi * measureWidth;
     const beats = groupBeats(measure.notes);
+
+    // Total beat units in this measure for proportional placement
+    let totalUnits = 0;
+    for (const bg of beats) totalUnits += beatUnits(bg);
+    if (totalUnits <= 0) totalUnits = 1;
+
+    const noteAreaWidth = measureWidth - BARLINE_GAP * 2;
+    let cumUnits = 0;
 
     for (let beatIdx = 0; beatIdx < beats.length; beatIdx++) {
       const bg = beats[beatIdx];
+      const noteX = measureStartX + BARLINE_GAP + (cumUnits / totalUnits) * noteAreaWidth;
 
       // Draw chord annotation if present
       if (chordAnns.length > 0) {
@@ -285,20 +300,25 @@ function renderSystem(
         }
       }
 
-      // Draw all note heads + ledger lines + accidentals at the same x
-      for (const note of bg.notes) {
-        drawNoteHead_full(ctx, noteX, staffTop, note, score.clef, score.key, opts.noteColor);
+      // Check if this beat group is a rest (all notes have midi < 0)
+      const isRest = bg.notes.every((n) => n.midi < 0);
+      if (isRest) {
+        drawRest(ctx, noteX, staffTop, bg.durationType, opts.noteColor);
+      } else {
+        // Draw all note heads + ledger lines + accidentals at the same x
+        for (const note of bg.notes) {
+          drawNoteHead_full(ctx, noteX, staffTop, note, score.clef, score.key, opts.noteColor);
+        }
+        // Draw a single shared stem/flags/dot for the beat group
+        drawStemForGroup(ctx, noteX, staffTop, bg, score.clef, opts.noteColor);
       }
-      // Draw a single shared stem/flags/dot for the beat group
-      drawStemForGroup(ctx, noteX, staffTop, bg, score.clef, opts.noteColor);
-      noteX += beatWidth(bg, noteUnit);
+      cumUnits += beatUnits(bg);
     }
 
-    // Bar line
-    if (mi < system.measures.length - 1) {
-      noteX += BARLINE_GAP;
-      drawBarLine(ctx, noteX, staffTop, opts.staffColor);
-      noteX += BARLINE_GAP;
+    // Bar line between measures
+    if (mi < numMeasures - 1) {
+      const barlineX = measureStartX + measureWidth;
+      drawBarLine(ctx, barlineX, staffTop, opts.staffColor);
     }
   }
 
@@ -332,7 +352,7 @@ function drawClef(
   color: string
 ): void {
   ctx.fillStyle = color;
-  ctx.font = "bold 32px serif";
+  ctx.font = "bold 28px serif";
   ctx.textBaseline = "middle";
 
   if (clef === "treble") {
@@ -438,7 +458,7 @@ function drawKeySignature(
   if (accidentals === 0) return x;
 
   ctx.fillStyle = color;
-  ctx.font = "16px serif";
+  ctx.font = "13px serif";
   ctx.textBaseline = "middle";
 
   // Sharp positions on treble clef (line/space from top, 0-indexed)
@@ -474,7 +494,7 @@ function drawTimeSignature(
   color: string
 ): void {
   ctx.fillStyle = color;
-  ctx.font = "bold 18px serif";
+  ctx.font = "bold 15px serif";
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
 
@@ -575,6 +595,99 @@ function drawStemForGroup(
   }
 }
 
+/** Draw a rest symbol at the staff center for the given duration type. */
+function drawRest(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  staffTop: number,
+  durationType: string,
+  color: string,
+): void {
+  const midY = staffTop + STAFF_HEIGHT / 2; // between lines 2 and 3
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = "round";
+
+  switch (durationType) {
+    case "whole": {
+      // Filled rectangle hanging from line 2
+      const y = staffTop + STAFF_LINE_SPACING; // line 2
+      ctx.fillRect(x - 5, y, 10, STAFF_LINE_SPACING / 2);
+      break;
+    }
+    case "half": {
+      // Filled rectangle sitting on line 3
+      const y = midY - STAFF_LINE_SPACING / 2;
+      ctx.fillRect(x - 5, y, 10, STAFF_LINE_SPACING / 2);
+      break;
+    }
+    case "quarter": {
+      // Zigzag shape approximation
+      const s = STAFF_LINE_SPACING * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(x + s, midY - s * 2);
+      ctx.lineTo(x - s * 0.5, midY - s * 0.5);
+      ctx.lineTo(x + s * 0.5, midY + s * 0.5);
+      ctx.lineTo(x - s, midY + s * 2);
+      ctx.stroke();
+      // Small diamonds at the bends
+      ctx.beginPath();
+      ctx.arc(x - s * 0.5, midY - s * 0.5, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + s * 0.5, midY + s * 0.5, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      break;
+    }
+    case "eighth": {
+      // Dot + angled stem + flag
+      ctx.beginPath();
+      ctx.arc(x, midY - 2, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, midY - 2);
+      ctx.lineTo(x + 1, midY + 8);
+      ctx.stroke();
+      break;
+    }
+    case "sixteenth": {
+      // Two dots + angled stem
+      ctx.beginPath();
+      ctx.arc(x, midY - 5, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, midY + 1, 2, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, midY - 5);
+      ctx.lineTo(x + 1, midY + 8);
+      ctx.stroke();
+      break;
+    }
+    case "thirty_second": {
+      // Three dots + angled stem
+      ctx.beginPath();
+      ctx.arc(x, midY - 8, 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, midY - 2, 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, midY + 4, 1.5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, midY - 8);
+      ctx.lineTo(x + 1, midY + 10);
+      ctx.stroke();
+      break;
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawNoteHead(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -671,7 +784,7 @@ function drawAccidental(
   color: string
 ): void {
   ctx.fillStyle = color;
-  ctx.font = "14px serif";
+  ctx.font = "11px serif";
   ctx.textBaseline = "middle";
 
   let symbol = "";
@@ -763,7 +876,7 @@ function drawScoreHeader(
 
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = "bold 13px sans-serif";
+  ctx.font = "bold 11px sans-serif";
   ctx.textBaseline = "bottom";
 
   // Left: tempo marking  ♩= {bpm}
@@ -787,11 +900,59 @@ function drawChordName(
 ): void {
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = "bold 11px sans-serif";
+  ctx.font = "bold 10px sans-serif";
   ctx.textBaseline = "bottom";
   ctx.textAlign = "left";
   ctx.fillText(chordName, x - 4, staffTop - 4);
   ctx.restore();
+}
+
+/**
+ * Hit-test a CSS coordinate against the score layout.
+ * Returns the 1-based measure number at (x, y), or null if no measure was hit.
+ */
+export function hitTestMeasure(
+  score: ScoreData,
+  options: RenderOptions,
+  x: number,
+  y: number,
+): number | null {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
+  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
+  const { systems } = layoutSystems(score, opts, topMargin, systemGap);
+
+  for (const system of systems) {
+    const staffTop = system.y;
+    // Generous vertical hit area: from above chord annotations to below staff
+    if (y < staffTop - 20 || y > staffTop + STAFF_HEIGHT + 20) continue;
+
+    const staffLeft = LEFT_MARGIN;
+    const staffRight = opts.width - RIGHT_MARGIN;
+
+    // Compute decorEndX (same logic as renderSystem)
+    let decorEndX = staffLeft + 5 + CLEF_WIDTH;
+    const keyAccCount = Math.abs(score.key.accidentals);
+    if (keyAccCount > 0) {
+      decorEndX += keyAccCount * KEY_SIG_WIDTH * 0.8 + 5;
+    }
+    if (system.measures[0]?.number === 1) {
+      decorEndX += TIME_SIG_WIDTH;
+    }
+
+    const numMeasures = system.measures.length;
+    const measureWidth = (staffRight - decorEndX) / numMeasures;
+
+    for (let mi = 0; mi < numMeasures; mi++) {
+      const measureStartX = decorEndX + mi * measureWidth;
+      const measureEndX = measureStartX + measureWidth;
+      if (x >= measureStartX && x < measureEndX) {
+        return system.measures[mi].number;
+      }
+    }
+  }
+  return null;
 }
 
 /**

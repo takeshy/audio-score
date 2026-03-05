@@ -5,8 +5,9 @@
 
 import * as React from "react";
 import { useStore } from "../store";
-import { renderScore, calculateSize, RenderOptions } from "./ScoreRenderer";
+import { renderScore, calculateSize, hitTestMeasure, RenderOptions } from "./ScoreRenderer";
 import { exportScorePdf } from "./pdfExport";
+import { setState } from "../store";
 import { t } from "../i18n";
 
 interface MainViewProps {
@@ -87,6 +88,27 @@ export function MainView({ language }: MainViewProps) {
     renderScore(ctx, score, opts);
   }, [score, chordAnnotations, containerWidth, getColors]);
 
+  // Canvas click → play from clicked measure
+  const handleCanvasClick = React.useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!score) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const opts: RenderOptions = {
+        width: containerWidth,
+        chordAnnotations,
+      };
+      const measure = hitTestMeasure(score, opts, x, y);
+      if (measure != null) {
+        setState({ playFromMeasure: measure });
+      }
+    },
+    [score, containerWidth, chordAnnotations],
+  );
+
   // PDF export handler
   const handleSavePdf = React.useCallback(async () => {
     if (!score || pdfExporting) return;
@@ -128,7 +150,12 @@ export function MainView({ language }: MainViewProps) {
 
           {/* Canvas area */}
           <div className="audio-score-main-canvas-area">
-            <canvas ref={canvasRef} className="audio-score-canvas" />
+            <canvas
+              ref={canvasRef}
+              className="audio-score-canvas"
+              onClick={handleCanvasClick}
+              style={{ cursor: "pointer" }}
+            />
           </div>
         </>
       )}
