@@ -20,14 +20,9 @@ A [GemiHub](https://github.com/takeshy/gemihub) plugin that converts audio files
 
 ## Installation
 
-Copy `main.js`, `manifest.json`, and `styles.css` to your GemiHub plugins directory:
-
-```
-plugins/audio-score/
-  main.js
-  manifest.json
-  styles.css
-```
+1. Go to **Settings > Plugins** in GemiHub
+2. Enter `takeshy/hub-audio-score`
+3. Click **Install**
 
 ## Usage
 
@@ -58,6 +53,10 @@ plugins/audio-score/
 7. Click **MIDI** to export — choose **Save to Drive** or **Download**
 
 ![MIDI export](docs/images/midi.png)
+
+8. Open the exported MIDI in [MuseScore Studio](https://musescore.org/) for beautifully engraved notation and high-quality piano playback. Audio Score is designed to be used together with MuseScore Studio for the best results
+
+![MuseScore Studio](docs/images/muse_score_studio.png)
 
 ## Architecture
 

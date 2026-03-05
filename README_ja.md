@@ -20,14 +20,9 @@
 
 ## インストール
 
-`main.js`、`manifest.json`、`styles.css` を GemiHub のプラグインディレクトリにコピーしてください:
-
-```
-plugins/audio-score/
-  main.js
-  manifest.json
-  styles.css
-```
+1. GemiHub の **Settings > Plugins** を開く
+2. `takeshy/hub-audio-score` を入力
+3. **Install** をクリック
 
 ## 使い方
 
@@ -58,6 +53,10 @@ plugins/audio-score/
 7. **MIDI** をクリックして **Drive に保存** または **ダウンロード** を選択
 
 ![MIDIエクスポート](docs/images/midi.png)
+
+8. エクスポートした MIDI を [MuseScore Studio](https://musescore.org/) で開くと、美しく整形された楽譜と高品質なピアノ音色で再生できます。Audio Score は MuseScore Studio と組み合わせて使うことを前提としています
+
+![MuseScore Studio](docs/images/muse_score_studio.png)
 
 ## アーキテクチャ
 
