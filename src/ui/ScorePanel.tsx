@@ -13,7 +13,6 @@ import { saveTemporary } from "../storage/idb";
 import { playScore, PlaybackHandle } from "../core/player";
 import {
   ChordAnnotation,
-  analyzeChords,
   improveScore,
 } from "../core/aiService";
 import { setState, useStore } from "../store";
@@ -22,6 +21,7 @@ interface PluginAPI {
   language?: string;
   drive: {
     createFile(name: string, content: string): Promise<{ id: string; name: string }>;
+    updateFile(fileId: string, content: string): Promise<void>;
     readFile?(fileId: string): Promise<string>;
   };
   storage: {
@@ -87,6 +87,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const [score, setScore] = React.useState<ScoreData | null>(null);
   const [error, setError] = React.useState<string>("");
   const [fileName, setFileName] = React.useState<string>("");
+  const [scoreFileId, setScoreFileId] = React.useState<string | null>(null);
+  const scoreFileIdRef = React.useRef<string | null>(null);
   const [settings, setSettings] = React.useState<AnalysisSettings>(DEFAULT_SETTINGS);
   const [playing, setPlaying] = React.useState(false);
   const [bpmInput, setBpmInput] = React.useState("");
@@ -115,6 +117,24 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   const [demucsError, setDemucsError] = React.useState("");
   const stemPlaybackRef = React.useRef<{ ctx: AudioContext; src: AudioBufferSourceNode } | null>(null);
   const [stemPlaying, setStemPlaying] = React.useState(false);
+
+  /** Save score to Drive (update existing or create new .audioscore). */
+  const saveScoreToDrive = React.useCallback(async (data: ScoreData) => {
+    const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
+    const stemSuffix = demucsStem ? `_${demucsStem}` : "";
+    const json = JSON.stringify(data);
+    saveTemporary(`${baseName}${stemSuffix}.json`, json).catch(() => {});
+    const fid = scoreFileIdRef.current;
+    if (fid) {
+      await api.drive.updateFile(fid, json).catch(() => {});
+    } else {
+      const created = await api.drive.createFile(`${baseName}${stemSuffix}.audioscore`, json).catch(() => null);
+      if (created) {
+        scoreFileIdRef.current = created.id;
+        setScoreFileId(created.id);
+      }
+    }
+  }, [fileName, demucsStem, api.drive]);
 
   // Load settings on mount
   React.useEffect(() => {
@@ -151,6 +171,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
               setScore(parsed);
               setChordAnnotations([]);
               setFileName(activeFileName.replace(/\.(mid|midi)$/, ""));
+              scoreFileIdRef.current = null;
+              setScoreFileId(null);
               setPhase("done");
             } catch {
               setPhase("idle");
@@ -174,6 +196,8 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
             setScore(parsed);
             setChordAnnotations(parsed.chordAnnotations ?? []);
             setFileName(activeFileName.replace(/\.audioscore$/, ""));
+            scoreFileIdRef.current = activeFileId;
+            setScoreFileId(activeFileId);
             setPhase("done");
           } else {
             setPhase("idle");
@@ -325,17 +349,13 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       setProgress({ stage: "done", percent: 100 });
       setScore(scoreData);
       setPhase("done");
-
-      const baseName = fileName.replace(/\.[^.]+$/, "");
-      const stemSuffix = demucsStem ? `_${demucsStem}` : "";
-      saveTemporary(`${baseName}${stemSuffix}.json`, JSON.stringify(scoreData)).catch(() => {});
-      api.drive.createFile(`${baseName}${stemSuffix}.audioscore`, JSON.stringify(scoreData)).catch(() => {});
+      saveScoreToDrive(scoreData);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`${i.errorAnalysis}: ${msg}`);
       setPhase("error");
     }
-  }, [settings, bpmInput, i, api, fileName, demucsStem]);
+  }, [settings, bpmInput, i, api, saveScoreToDrive]);
 
   /**
    * Run Demucs separateAll to get all 6 stems at once.
@@ -502,34 +522,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
   }, [i]);
 
   /**
-   * AI: Analyze chords
-   */
-  const handleAiChords = React.useCallback(async () => {
-    if (!score || aiLoading) return;
-    setAiLoading("chords");
-    setAiError("");
-    try {
-      const annotations = await analyzeChords(api.gemini, score);
-      setChordAnnotations(annotations);
-
-      const updatedScore = { ...score, chordAnnotations: annotations };
-      setScore(updatedScore);
-      const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
-      const stemSuffix = demucsStem ? `_${demucsStem}` : "";
-      const json = JSON.stringify(updatedScore);
-      saveTemporary(`${baseName}${stemSuffix}.json`, json).catch(() => {});
-      api.drive.createFile(`${baseName}${stemSuffix}.audioscore`, json).catch(() => {});
-
-      showAiSuccess(i.aiChordsSuccess);
-    } catch (err) {
-      showAiError(err);
-    } finally {
-      setAiLoading("");
-    }
-  }, [score, aiLoading, api.gemini, i, fileName, demucsStem, showAiSuccess, showAiError, api.drive]);
-
-  /**
-   * AI: Improve score (remove ML artifacts)
+   * AI: Improve score (remove ML artifacts + chord analysis)
    */
   const handleAiImprove = React.useCallback(async () => {
     if (!score || aiLoading) return;
@@ -543,13 +536,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       if (improved) {
         setScore(improved);
         setChordAnnotations(improved.chordAnnotations ?? []);
-
-        const baseName = fileName ? fileName.replace(/\.[^.]+$/, "") : "score";
-        const stemSuffix = demucsStem ? `_${demucsStem}` : "";
-        const improvedName = `${baseName}${stemSuffix}_improved`;
-        const json = JSON.stringify(improved);
-        saveTemporary(`${improvedName}.json`, json).catch(() => {});
-        api.drive.createFile(`${improvedName}.audioscore`, json).catch(() => {});
+        saveScoreToDrive(improved);
 
         showAiSuccess(i.aiImproveSuccess);
       }
@@ -559,7 +546,7 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
       setAiLoading("");
       setAiProgress(null);
     }
-  }, [score, aiLoading, api.gemini, i, fileName, demucsStem, showAiSuccess, showAiError, api.drive]);
+  }, [score, aiLoading, api.gemini, i, showAiSuccess, showAiError, saveScoreToDrive]);
 
   /**
    * Export score as MIDI file.
@@ -856,18 +843,11 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                 <div className="audio-score-ai-section-title">{i.aiSection}</div>
                 <div className="audio-score-ai-buttons">
                   <button
-                    className={`audio-score-btn${aiLoading === "chords" ? " is-loading" : ""}`}
-                    onClick={handleAiChords}
-                    disabled={!!aiLoading}
-                  >
-                    {aiLoading === "chords" ? i.aiChordsLoading : i.aiChords}
-                  </button>
-                  <button
                     className={`audio-score-btn${aiLoading === "improve" ? " is-loading" : ""}`}
                     onClick={handleAiImprove}
-                    disabled={!!aiLoading}
+                    disabled={!!aiLoading || chordAnnotations.length > 0}
                   >
-                    {aiLoading === "improve" ? i.aiImproveLoading : i.aiImprove}
+                    {aiLoading === "improve" ? i.aiImproveLoading : chordAnnotations.length > 0 ? `${i.aiImprove} ✓` : i.aiImprove}
                   </button>
                 </div>
                 {aiLoading === "improve" && aiProgress && (
@@ -875,13 +855,15 @@ export function ScorePanel({ api, language, fileId: activeFileId, fileName: acti
                     <div className="audio-score-progress-bar">
                       <div
                         className="audio-score-progress-fill"
-                        style={{ width: aiProgress.stage === "filter" ? "5%" : `${(aiProgress.completed / aiProgress.total) * 100}%` }}
+                        style={{ width: aiProgress.stage === "filter" ? "5%" : aiProgress.stage === "chords" ? "10%" : `${10 + (aiProgress.completed / aiProgress.total) * 90}%` }}
                       />
                     </div>
                     <span className="audio-score-progress-label">
                       {aiProgress.stage === "filter"
                         ? i.aiImproveFiltering
-                        : `${aiProgress.completed}/${aiProgress.total}`}
+                        : aiProgress.stage === "chords"
+                        ? i.aiImproveChords
+                        : `${i.aiImproveLlm} ${aiProgress.completed}/${aiProgress.total}`}
                     </span>
                   </div>
                 )}

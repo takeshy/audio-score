@@ -20,7 +20,7 @@ export type SimplificationType = "melody" | "bass" | "simplified";
 /**
  * Analyze chords in the score and return chord annotations.
  */
-export async function analyzeChords(
+async function analyzeChords(
   gemini: GeminiAPI,
   score: ScoreData,
 ): Promise<ChordAnnotation[]> {
@@ -251,6 +251,10 @@ export async function improveScore(
   onProgress?.(0, 1, "filter");
   const filtered = algorithmicFilter(score);
 
+  // Step 2: Chord analysis (before LLM improvement so chords inform artifact removal)
+  onProgress?.(0, 1, "chords");
+  const chordAnnotations = await analyzeChords(gemini, filtered).catch(() => [] as ChordAnnotation[]);
+
   const BATCH_SIZE = 20;
   const CONTEXT_SIZE = 2;
   const measures = filtered.measures;
@@ -258,15 +262,28 @@ export async function improveScore(
 
   const header = `BPM: ${filtered.bpm} / Key: ${filtered.key.root} ${filtered.key.mode} / Time: ${filtered.beatsPerMeasure}/${filtered.beatUnit} / Clef: ${filtered.clef}`;
 
+  // Format chord annotations for the batch range
+  function chordsForRange(startMeasure: number, endMeasure: number): string {
+    const relevant = chordAnnotations.filter(
+      (a) => a.measureNumber >= startMeasure && a.measureNumber <= endMeasure,
+    );
+    if (relevant.length === 0) return "";
+    return "Chords: " + relevant.map((a) => `M${a.measureNumber}b${a.beatIndex + 1}:${a.chordName}`).join(" ");
+  }
+
   const systemPrompt = `You are a music transcription quality expert. You receive measures from an ML-based pitch detector (basic-pitch) that have ALREADY been algorithmically filtered to remove octave duplicates and low-amplitude ghost notes.
 
+Chord annotations are provided. Use them to judge which notes are chord tones (keep) vs artifacts (remove).
+
 Your task is to remove the REMAINING artifacts only:
-1. NON-OCTAVE HARMONICS: Spurious notes at non-octave intervals (e.g. fifth, third) of a fundamental that don't fit the harmonic context. These appear as extra high notes above the real melody.
-2. RESIDUAL GHOST NOTES: Short isolated notes that don't form a coherent musical phrase — likely false detections in otherwise silent passages.
-3. OUT-OF-KEY NOISE: Isolated chromatic notes that don't fit the key signature and aren't intentional chromaticism (no chromatic approach or passing tone pattern).
+1. NON-CHORD-TONE ARTIFACTS: Notes that don't fit the current chord AND don't function as passing tones, neighbor tones, or suspensions.
+2. NON-OCTAVE HARMONICS: Spurious notes at non-octave intervals (e.g. fifth, third) of a fundamental that don't fit the harmonic context.
+3. RESIDUAL GHOST NOTES: Short isolated notes that don't form a coherent musical phrase — likely false detections in otherwise silent passages.
+4. OUT-OF-KEY NOISE: Isolated chromatic notes that don't fit the key signature and aren't intentional chromaticism.
 
 IMPORTANT RULES:
 - Octave duplicates are ALREADY removed — do NOT look for them.
+- Notes that ARE chord tones of the current chord should almost always be KEPT.
 - Be VERY CONSERVATIVE: when in doubt, KEEP the note.
 - Remove at most 2–3 notes per measure. If a measure sounds fine, return it unchanged.
 - Do NOT add new notes, change pitches, or modify rhythms.
@@ -285,8 +302,14 @@ IMPORTANT RULES:
     const ctxBefore = measures.slice(Math.max(0, startIdx - CONTEXT_SIZE), startIdx);
     const ctxAfter = measures.slice(endIdx, Math.min(measures.length, endIdx + CONTEXT_SIZE));
 
+    // Chord info for the full range (context + batch)
+    const rangeStart = ctxBefore.length > 0 ? ctxBefore[0].number : batchMeasures[0].number;
+    const rangeEnd = ctxAfter.length > 0 ? ctxAfter[ctxAfter.length - 1].number : batchMeasures[batchMeasures.length - 1].number;
+    const chordLine = chordsForRange(rangeStart, rangeEnd);
+
     // Build prompt
     const parts: string[] = [header, ""];
+    if (chordLine) parts.push(chordLine, "");
 
     if (ctxBefore.length > 0) {
       parts.push("--- CONTEXT (do not modify) ---");
@@ -366,12 +389,13 @@ IMPORTANT RULES:
       improvedMeasures.push(...batchMeasures);
     }
 
-    onProgress?.(batch + 1, totalBatches, "llm");
+    onProgress?.(endIdx, measures.length, "llm");
   }
 
   return {
     ...filtered,
     measures: improvedMeasures,
+    chordAnnotations,
   };
 }
 

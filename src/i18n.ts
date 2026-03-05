@@ -64,9 +64,6 @@ export interface Translations {
   stop: string;
   // AI features
   aiSection: string;
-  aiChords: string;
-  aiChordsLoading: string;
-  aiChordsSuccess: string;
   aiAnalysis: string;
   aiAnalysisLoading: string;
   aiAnalysisTitle: string;
@@ -81,6 +78,8 @@ export interface Translations {
   aiImprove: string;
   aiImproveLoading: string;
   aiImproveFiltering: string;
+  aiImproveChords: string;
+  aiImproveLlm: string;
   aiImproveSuccess: string;
   aiError: string;
   // PDF export
@@ -152,9 +151,6 @@ const en: Translations = {
   play: "Play",
   stop: "Stop",
   aiSection: "AI Features",
-  aiChords: "Chords",
-  aiChordsLoading: "Analyzing chords...",
-  aiChordsSuccess: "Chord annotations added",
   aiAnalysis: "Analysis",
   aiAnalysisLoading: "Analyzing music...",
   aiAnalysisTitle: "Music Analysis",
@@ -169,6 +165,8 @@ const en: Translations = {
   aiImprove: "Improve",
   aiImproveLoading: "Improving...",
   aiImproveFiltering: "Filtering artifacts...",
+  aiImproveChords: "Analyzing chords...",
+  aiImproveLlm: "AI improving measures",
   aiImproveSuccess: "Score improved",
   aiError: "AI processing failed",
   savePdf: "PDF",
@@ -237,9 +235,6 @@ const ja: Translations = {
   play: "再生",
   stop: "停止",
   aiSection: "AI 機能",
-  aiChords: "コード名",
-  aiChordsLoading: "コード分析中...",
-  aiChordsSuccess: "コード注釈を追加しました",
   aiAnalysis: "分析",
   aiAnalysisLoading: "楽曲分析中...",
   aiAnalysisTitle: "楽曲分析",
@@ -254,6 +249,8 @@ const ja: Translations = {
   aiImprove: "改善",
   aiImproveLoading: "改善中...",
   aiImproveFiltering: "アーティファクト除去中...",
+  aiImproveChords: "コード分析中...",
+  aiImproveLlm: "AI 改善中 小節",
   aiImproveSuccess: "楽譜を改善しました",
   aiError: "AI 処理に失敗しました",
   savePdf: "PDF",

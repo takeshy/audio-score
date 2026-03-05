@@ -12,9 +12,9 @@ A [GemiHub](https://github.com/takeshy/gemihub) plugin that converts audio files
 - **Source separation** — Demucs WASM (htdemucs_6s) isolates individual stems (piano, vocals, bass, drums, guitar, other) before analysis
 - **Automatic music analysis** — BPM detection, key signature (Krumhansl-Schmuckler), clef selection, beat quantization
 - **Staff notation rendering** — canvas-based display with note heads, accidentals, ledger lines, and measure bars
-- **Score playback** — play back detected notes via Web Audio API
-- **MusicXML import** — re-import MuseScore-edited `.musicxml` files via file picker, drag & drop, or Drive
-- **Export** — MusicXML, PDF, plain text score, stem WAV download
+- **Score playback** — play back detected notes via Web Audio API; click any measure to start from there; current measure is highlighted during playback
+- **MIDI import** — open `.mid` / `.midi` files via file picker, drag & drop, or Drive to display as sheet music
+- **Export** — MIDI, PDF, plain text score, stem WAV download
 - **AI improvement** — optional Gemini integration for chord analysis and score refinement
 - **Bilingual UI** — English and Japanese
 
@@ -32,12 +32,12 @@ plugins/audio-score/
 ## Usage
 
 1. Open the Audio Score panel in the GemiHub sidebar
-2. Click **Load** or drag & drop an audio file (MP3, WAV, etc.) or a `.musicxml` file
+2. Click **Load** or drag & drop an audio file (MP3, WAV, etc.) or a `.mid` file
 3. For audio files, select a detection model (Basic Pitch or Piano Transcription)
 4. Optionally enable source separation to isolate a stem first
 5. Click **Analyze** — the score is displayed when complete
-6. Use the toolbar to play, export MusicXML/PDF, or download stems
-7. Edit the exported MusicXML in MuseScore, then re-import to update the score
+6. Use the toolbar to play, export MIDI/PDF, or download stems
+7. Click on the score canvas to start playback from that measure
 
 ## Architecture
 
@@ -52,8 +52,9 @@ src/
 │   ├── demucsService.ts              # Demucs WASM source separation
 │   ├── musicTheory.ts                # BPM, key, quantization, measures
 │   ├── noteSegmenter.ts              # DetectedNote[] → ScoreData pipeline
-│   ├── musicXmlImport.ts              # MusicXML import parser
-│   ├── aiService.ts                  # Gemini AI + MusicXML export
+│   ├── midiImport.ts                 # Standard MIDI File import parser
+│   ├── midiExport.ts                 # Standard MIDI File export
+│   ├── aiService.ts                  # Gemini AI (chord analysis, score improvement)
 │   ├── scoreParser.ts                # Score text format parser
 │   └── player.ts                     # Web Audio playback
 ├── ui/
