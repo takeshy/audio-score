@@ -17,6 +17,15 @@ import { midiToStaffPosition, getAccidental } from "../core/musicTheory";
 import type { ChordAnnotation } from "../core/aiService";
 import { BeatGroup, groupBeats, measuresToText } from "../core/scoreParser";
 
+/** Convert hex color to rgba string. */
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 /** Layout constants */
 const STAFF_LINE_SPACING = 10; // pixels between staff lines
 const STAFF_LINES = 5;
@@ -33,6 +42,7 @@ const NOTE_HEAD_RY = 3; // vertical radius
 const STEM_LENGTH = 28;
 const FLAG_LENGTH = 10;
 const BARLINE_GAP = 8; // space before/after barline
+const DECOR_PAD = 10; // extra space between decorations (clef/key/time) and note area
 const SYSTEM_GAP = 140; // vertical gap between systems
 const BAR_LINE_EXTRA = 2;
 
@@ -120,7 +130,9 @@ export interface RenderOptions {
   backgroundColor?: string;
   staffColor?: string;
   noteColor?: string;
+  accentColor?: string;
   chordAnnotations?: ChordAnnotation[];
+  highlightMeasure?: number;
 }
 
 const DEFAULT_OPTIONS: Required<RenderOptions> = {
@@ -128,7 +140,9 @@ const DEFAULT_OPTIONS: Required<RenderOptions> = {
   backgroundColor: "#ffffff",
   staffColor: "#333333",
   noteColor: "#000000",
+  accentColor: "#2563eb",
   chordAnnotations: [],
+  highlightMeasure: 0,
 };
 
 /**
@@ -137,6 +151,26 @@ const DEFAULT_OPTIONS: Required<RenderOptions> = {
 /** Extra vertical space above each system when chord annotations are present. */
 const CHORD_TOP_EXTRA = 15;
 
+/**
+ * Compute the minimum top margin so that high notes are not clipped.
+ * Scans all notes and ensures enough space above the staff for ledger lines,
+ * accidentals, and the score header.
+ */
+function computeTopMargin(score: ScoreData, baseTopMargin: number): number {
+  let minNoteY = 0; // most negative offset relative to staffTop
+  for (const measure of score.measures) {
+    for (const note of measure.notes) {
+      if (note.midi < 0) continue;
+      const y = noteToY(note.midi, 0, score.clef);
+      if (y < minNoteY) minNoteY = y;
+    }
+  }
+  if (minNoteY >= 0) return baseTopMargin;
+  // Space for: note head + ledger lines + score header (15px) + padding
+  const needed = -minNoteY + 25;
+  return Math.max(baseTopMargin, needed);
+}
+
 export function calculateSize(
   score: ScoreData,
   options: RenderOptions
@@ -144,7 +178,7 @@ export function calculateSize(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   ensureRests(score);
   const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
-  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const topMargin = computeTopMargin(score, hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN);
   const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
   const layout = layoutSystems(score, opts, topMargin, systemGap);
   const height = layout.systems.length * (STAFF_HEIGHT + systemGap) + topMargin + BOTTOM_MARGIN;
@@ -194,7 +228,7 @@ export function getSystemLayouts(
   const fullOpts = { ...DEFAULT_OPTIONS, ...opts };
   ensureRests(score);
   const hasChords = fullOpts.chordAnnotations && fullOpts.chordAnnotations.length > 0;
-  const topM = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const topM = computeTopMargin(score, hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN);
   const sysGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
   const { systems, canvasWidth } = layoutSystems(score, fullOpts, topM, sysGap);
   return {
@@ -217,7 +251,7 @@ export function renderScore(
 ): void {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
-  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const topMargin = computeTopMargin(score, hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN);
   const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
   // Ensure rests are present in measure data
   ensureRests(score);
@@ -268,6 +302,8 @@ function renderSystem(
     decorEndX += TIME_SIG_WIDTH;
   }
 
+  decorEndX += DECOR_PAD;
+
   // Equal-width measure layout
   const numMeasures = system.measures.length;
   const measureWidth = (staffRight - decorEndX) / numMeasures;
@@ -276,6 +312,15 @@ function renderSystem(
   for (let mi = 0; mi < numMeasures; mi++) {
     const measure = system.measures[mi];
     const measureStartX = decorEndX + mi * measureWidth;
+
+    // Highlight current playback measure
+    if (opts.highlightMeasure > 0 && measure.number === opts.highlightMeasure) {
+      ctx.save();
+      ctx.fillStyle = hexToRgba(opts.accentColor, 0.15);
+      ctx.fillRect(measureStartX, staffTop - 5, measureWidth, STAFF_HEIGHT + 10);
+      ctx.restore();
+    }
+
     const beats = groupBeats(measure.notes);
 
     // Total beat units in this measure for proportional placement
@@ -876,12 +921,15 @@ function drawScoreHeader(
 
   ctx.save();
   ctx.fillStyle = color;
-  ctx.font = "bold 11px sans-serif";
   ctx.textBaseline = "bottom";
+  ctx.textAlign = "left";
 
   // Left: tempo marking  ♩= {bpm}
-  ctx.textAlign = "left";
-  ctx.fillText(`♩= ${score.bpm}`, LEFT_MARGIN, y);
+  ctx.font = "16px serif";
+  ctx.fillText("♩", LEFT_MARGIN + 5, y);
+  const noteWidth = ctx.measureText("♩").width;
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillText(`= ${score.bpm}`, LEFT_MARGIN + 5 + noteWidth + 1, y);
 
   // Right: key  {root} {mode}
   ctx.textAlign = "right";
@@ -919,7 +967,7 @@ export function hitTestMeasure(
 ): number | null {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const hasChords = opts.chordAnnotations && opts.chordAnnotations.length > 0;
-  const topMargin = hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN;
+  const topMargin = computeTopMargin(score, hasChords ? TOP_MARGIN + CHORD_TOP_EXTRA : TOP_MARGIN);
   const systemGap = hasChords ? SYSTEM_GAP + CHORD_TOP_EXTRA : SYSTEM_GAP;
   const { systems } = layoutSystems(score, opts, topMargin, systemGap);
 
@@ -940,6 +988,7 @@ export function hitTestMeasure(
     if (system.measures[0]?.number === 1) {
       decorEndX += TIME_SIG_WIDTH;
     }
+    decorEndX += DECOR_PAD;
 
     const numMeasures = system.measures.length;
     const measureWidth = (staffRight - decorEndX) / numMeasures;

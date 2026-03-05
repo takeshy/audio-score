@@ -16,22 +16,51 @@ interface MainViewProps {
 
 export function MainView({ language }: MainViewProps) {
   const i = t(language);
-  const { score, chordAnnotations, fileName } = useStore();
+  const { score, chordAnnotations, fileName, playbackHandle } = useStore();
 
   const [saveMsg, setSaveMsg] = React.useState("");
   const [pdfExporting, setPdfExporting] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const canvasAreaRef = React.useRef<HTMLDivElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const [containerWidth, setContainerWidth] = React.useState(800);
+  const [canvasWidth, setCanvasWidth] = React.useState(800);
+  const [highlightMeasure, setHighlightMeasure] = React.useState(0);
 
-  // Track container width via ResizeObserver
+  // Highlight current measure during playback
   React.useEffect(() => {
-    const el = containerRef.current;
+    if (!playbackHandle || !score) {
+      if (highlightMeasure !== 0) setHighlightMeasure(0);
+      return;
+    }
+    const beatDuration = 60 / score.bpm;
+    const measureDuration = beatDuration * score.beatsPerMeasure;
+    const downbeat = score.downbeatOffset ?? 0;
+    let prevMeasure = -1;
+    let rafId = 0;
+
+    function tick() {
+      if (!playbackHandle) return;
+      const absTime = playbackHandle.getElapsed();
+      const idx = Math.floor((absTime - downbeat) / measureDuration);
+      const m = Math.max(1, Math.min(idx + 1, score!.measures.length));
+      if (m !== prevMeasure) {
+        prevMeasure = m;
+        setHighlightMeasure(m);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [playbackHandle, score]);
+
+  // Track canvas area width (excluding padding) via ResizeObserver
+  React.useEffect(() => {
+    const el = canvasAreaRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect.width;
-        if (w > 0) setContainerWidth(w);
+        if (w > 0) setCanvasWidth(w);
       }
     });
     ro.observe(el);
@@ -67,11 +96,13 @@ export function MainView({ language }: MainViewProps) {
     const MAX_CANVAS_AREA = 16_777_216;
 
     const opts: RenderOptions = {
-      width: containerWidth,
+      width: canvasWidth,
       backgroundColor: colors.bg,
       staffColor: colors.secondary,
       noteColor: colors.text,
+      accentColor: colors.accent,
       chordAnnotations,
+      highlightMeasure,
     };
     const size = calculateSize(score, opts);
 
@@ -86,7 +117,7 @@ export function MainView({ language }: MainViewProps) {
     ctx.setTransform(effectiveDpr, 0, 0, effectiveDpr, 0, 0);
 
     renderScore(ctx, score, opts);
-  }, [score, chordAnnotations, containerWidth, getColors]);
+  }, [score, chordAnnotations, canvasWidth, getColors, highlightMeasure]);
 
   // Canvas click → play from clicked measure
   const handleCanvasClick = React.useCallback(
@@ -98,7 +129,7 @@ export function MainView({ language }: MainViewProps) {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const opts: RenderOptions = {
-        width: containerWidth,
+        width: canvasWidth,
         chordAnnotations,
       };
       const measure = hitTestMeasure(score, opts, x, y);
@@ -106,7 +137,7 @@ export function MainView({ language }: MainViewProps) {
         setState({ playFromMeasure: measure });
       }
     },
-    [score, containerWidth, chordAnnotations],
+    [score, canvasWidth, chordAnnotations],
   );
 
   // PDF export handler
@@ -149,7 +180,7 @@ export function MainView({ language }: MainViewProps) {
           </div>
 
           {/* Canvas area */}
-          <div className="audio-score-main-canvas-area">
+          <div className="audio-score-main-canvas-area" ref={canvasAreaRef}>
             <canvas
               ref={canvasRef}
               className="audio-score-canvas"

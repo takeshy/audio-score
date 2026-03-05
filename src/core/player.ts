@@ -11,6 +11,8 @@ export interface PlaybackHandle {
   finished: Promise<void>;
   /** Returns elapsed playback time in seconds. */
   getElapsed(): number;
+  /** Time offset applied at playback start (seconds). */
+  readonly timeOffset: number;
 }
 
 /**
@@ -145,5 +147,5 @@ export function playScore(score: ScoreData, startMeasure?: number): PlaybackHand
     return Math.max(0, ctx.currentTime - baseTime);
   }
 
-  return { stop, finished, getElapsed };
+  return { stop, finished, getElapsed, timeOffset };
 }
