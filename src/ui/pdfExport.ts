@@ -217,7 +217,7 @@ function splitIntoPages(
       // Remove last system and finalize this page
       currentPageSystems.pop();
 
-      const pageSrcY = currentPageSystems[0].y - topMargin / 2;
+      const pageSrcY = isFirstPage ? 0 : currentPageSystems[0].y - systemGap / 2;
       const pageLastY = currentPageSystems[currentPageSystems.length - 1].y;
       const pageSrcH = pageLastY - pageSrcY + staffHeight + systemGap / 2;
 
@@ -231,7 +231,7 @@ function splitIntoPages(
 
   // Remaining systems
   if (currentPageSystems.length > 0) {
-    const pageSrcY = currentPageSystems[0].y - topMargin / 2;
+    const pageSrcY = isFirstPage ? 0 : currentPageSystems[0].y - systemGap / 2;
     const pageLastY = currentPageSystems[currentPageSystems.length - 1].y;
     const pageSrcH = pageLastY - pageSrcY + staffHeight + systemGap / 2;
 

@@ -7,6 +7,9 @@ import {
   DetectedNote,
   AnalysisSettings,
   ScoreData,
+  Measure,
+  DurationType,
+  DURATION_BEATS,
   PITCH_RANGES,
 } from "../types";
 import {
@@ -27,6 +30,84 @@ function quantizeNotes(notes: DetectedNote[], bpm: number): DetectedNote[] {
     const { type, dotted } = quantizeDuration(note.duration, bpm);
     return { ...note, durationType: type, dotted };
   });
+}
+
+/** Create a rest DetectedNote. */
+function makeRest(startTime: number, durationSec: number, durationType: DurationType, dotted: boolean): DetectedNote {
+  return {
+    midi: -1,
+    name: "rest",
+    startTime,
+    duration: durationSec,
+    durationType,
+    dotted,
+    frequency: 0,
+    amplitude: 0,
+  };
+}
+
+/** Rest duration types, largest first. */
+const REST_TYPES: DurationType[] = ["whole", "half", "quarter", "eighth", "sixteenth", "thirty_second"];
+
+/**
+ * Fill gaps between notes (and at measure start/end) with rest notes.
+ * Mutates measure.notes in place.
+ */
+function fillRests(measures: Measure[], bpm: number, beatsPerMeasure: number, downbeatOffset: number): void {
+  const beatDur = 60 / bpm;
+  const measureDur = beatDur * beatsPerMeasure;
+
+  for (const measure of measures) {
+    const measureStart = downbeatOffset + (measure.number - 1) * measureDur;
+    const measureEnd = measureStart + measureDur;
+    const filled: DetectedNote[] = [];
+    let cursor = measureStart;
+
+    // Sort notes by startTime
+    const sorted = [...measure.notes].sort((a, b) => a.startTime - b.startTime);
+
+    // Group simultaneous notes (chords) so we advance cursor past all of them
+    let i = 0;
+    while (i < sorted.length) {
+      const noteStart = sorted[i].startTime;
+
+      // Fill gap before this note/chord
+      if (noteStart > cursor + beatDur * 0.06) {
+        emitRests(filled, cursor, noteStart, beatDur);
+      }
+
+      // Collect all simultaneous notes (chord)
+      let maxEnd = 0;
+      while (i < sorted.length && Math.abs(sorted[i].startTime - noteStart) < beatDur * 0.06) {
+        filled.push(sorted[i]);
+        const noteEnd = sorted[i].startTime + sorted[i].duration;
+        if (noteEnd > maxEnd) maxEnd = noteEnd;
+        i++;
+      }
+      cursor = Math.max(cursor, maxEnd);
+    }
+
+    // Fill gap at end of measure
+    if (measureEnd > cursor + beatDur * 0.06) {
+      emitRests(filled, cursor, measureEnd, beatDur);
+    }
+
+    measure.notes = filled;
+  }
+}
+
+/** Emit rest notes to fill the gap from `from` to `to` (in seconds). */
+function emitRests(out: DetectedNote[], from: number, to: number, beatDur: number): void {
+  let cursor = from;
+  const tolerance = beatDur * 0.06;
+  for (const rt of REST_TYPES) {
+    const beats = DURATION_BEATS[rt];
+    const dur = beats * beatDur;
+    while (cursor + dur <= to + tolerance) {
+      out.push(makeRest(cursor, dur, rt, false));
+      cursor += dur;
+    }
+  }
 }
 
 /**
@@ -85,8 +166,9 @@ export function buildScoreFromNotes(
   // Choose clef
   const clef = chooseClef(midiNotes);
 
-  // Split into measures
+  // Split into measures and fill gaps with rests
   const measures = splitIntoMeasures(filtered, bpm, settings.beatsPerMeasure, downbeatOffset);
+  fillRests(measures, bpm, settings.beatsPerMeasure, downbeatOffset);
 
   // Total duration
   const lastNote = filtered[filtered.length - 1];
