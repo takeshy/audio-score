@@ -32,12 +32,24 @@ plugins/audio-score/
 ## 使い方
 
 1. GemiHub サイドバーで Audio Score パネルを開く
+
+![初期画面](docs/images/initial.png)
+
 2. **Load** をクリック、またはオーディオファイル（MP3、WAV 等）や `.mid` ファイルをドラッグ＆ドロップ
-3. オーディオファイルの場合、検出モデルを選択（Basic Pitch または Piano Transcription）
-4. 必要に応じて音源分離を有効にしてステムを分離
-5. **Analyze** をクリック — 解析完了後に楽譜が表示される
-6. ツールバーから再生、MIDI/PDFエクスポート、ステムダウンロードが可能
-7. 楽譜キャンバスをクリックするとその小節から再生開始
+
+![ファイル読み込み](docs/images/load_file.png)
+
+3. 必要に応じて音源分離を有効にしてステムを分離（ピアノ、ボーカル等）
+
+![音源分離](docs/images/separated.png)
+
+4. 検出モデルを選択して **Analyze** をクリック
+
+![解析中](docs/images/analyzing.png)
+
+5. 解析完了後に楽譜が表示される — 再生、MIDI/PDFエクスポート、小節クリックでその位置から再生開始
+
+![解析結果](docs/images/analyzed.png)
 
 ## アーキテクチャ
 

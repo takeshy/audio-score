@@ -32,12 +32,24 @@ plugins/audio-score/
 ## Usage
 
 1. Open the Audio Score panel in the GemiHub sidebar
+
+![Initial panel](docs/images/initial.png)
+
 2. Click **Load** or drag & drop an audio file (MP3, WAV, etc.) or a `.mid` file
-3. For audio files, select a detection model (Basic Pitch or Piano Transcription)
-4. Optionally enable source separation to isolate a stem first
-5. Click **Analyze** — the score is displayed when complete
-6. Use the toolbar to play, export MIDI/PDF, or download stems
-7. Click on the score canvas to start playback from that measure
+
+![Load file](docs/images/load_file.png)
+
+3. Optionally enable source separation to isolate a stem (piano, vocals, etc.)
+
+![Source separation](docs/images/separated.png)
+
+4. Select a detection model and click **Analyze**
+
+![Analyzing](docs/images/analyzing.png)
+
+5. The score is displayed when complete — play, export MIDI/PDF, or click a measure to start playback from there
+
+![Analysis result](docs/images/analyzed.png)
 
 ## Architecture
 
