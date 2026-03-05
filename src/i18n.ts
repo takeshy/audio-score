@@ -48,6 +48,7 @@ export interface Translations {
   download: string;
   demucs: string;
   demucsHint: string;
+  stemDownloadHint: string;
   loadAudio: string;
   resetDefaults: string;
   save: string;
@@ -63,24 +64,6 @@ export interface Translations {
   play: string;
   stop: string;
   // AI features
-  aiSection: string;
-  aiAnalysis: string;
-  aiAnalysisLoading: string;
-  aiAnalysisTitle: string;
-  aiAnalysisCollapse: string;
-  aiAnalysisExpand: string;
-  aiSimplify: string;
-  aiSimplifyLoading: string;
-  aiSimplifyMelody: string;
-  aiSimplifyBass: string;
-  aiSimplifySimplified: string;
-  aiSimplifySuccess: string;
-  aiImprove: string;
-  aiImproveLoading: string;
-  aiImproveFiltering: string;
-  aiImproveChords: string;
-  aiImproveLlm: string;
-  aiImproveSuccess: string;
   aiError: string;
   // PDF export
   savePdf: string;
@@ -88,6 +71,8 @@ export interface Translations {
   // MIDI
   midiExport: string;
   midiExportSuccess: string;
+  midiSaving: string;
+  midiSaveDrive: string;
   // Main view
   mainViewEmpty: string;
 }
@@ -139,6 +124,7 @@ const en: Translations = {
   download: "Download",
   demucs: "Demucs",
   demucsHint: "Separate all stems before analysis (~60 MB download on first use)",
+  stemDownloadHint: "Download WAV and load it later for transcription or MIDI export",
   loadAudio: "Load",
   resetDefaults: "Reset to Defaults",
   save: "Save",
@@ -150,29 +136,13 @@ const en: Translations = {
   analyzeCurrentFile: "Analyze",
   play: "Play",
   stop: "Stop",
-  aiSection: "AI Features",
-  aiAnalysis: "Analysis",
-  aiAnalysisLoading: "Analyzing music...",
-  aiAnalysisTitle: "Music Analysis",
-  aiAnalysisCollapse: "Collapse",
-  aiAnalysisExpand: "Expand",
-  aiSimplify: "Simplify",
-  aiSimplifyLoading: "Simplifying...",
-  aiSimplifyMelody: "Melody only",
-  aiSimplifyBass: "Bass only",
-  aiSimplifySimplified: "Simplified",
-  aiSimplifySuccess: "Score simplified",
-  aiImprove: "Improve",
-  aiImproveLoading: "Improving...",
-  aiImproveFiltering: "Filtering artifacts...",
-  aiImproveChords: "Analyzing chords...",
-  aiImproveLlm: "AI improving measures",
-  aiImproveSuccess: "Score improved",
   aiError: "AI processing failed",
   savePdf: "PDF",
   savePdfSuccess: "PDF saved",
   midiExport: "MIDI",
-  midiExportSuccess: "MIDI downloaded",
+  midiExportSuccess: "MIDI saved",
+  midiSaving: "Saving MIDI...",
+  midiSaveDrive: "Save to Drive",
   mainViewEmpty: "Load an audio file from the sidebar",
 };
 
@@ -223,6 +193,7 @@ const ja: Translations = {
   download: "ダウンロード",
   demucs: "Demucs",
   demucsHint: "解析前に全ステムを分離（初回は約60MBダウンロード）",
+  stemDownloadHint: "WAVをダウンロードして、後から楽譜起こしやMIDI変換に利用できます",
   loadAudio: "読み込む",
   resetDefaults: "デフォルトに戻す",
   save: "保存",
@@ -234,29 +205,13 @@ const ja: Translations = {
   analyzeCurrentFile: "解析",
   play: "再生",
   stop: "停止",
-  aiSection: "AI 機能",
-  aiAnalysis: "分析",
-  aiAnalysisLoading: "楽曲分析中...",
-  aiAnalysisTitle: "楽曲分析",
-  aiAnalysisCollapse: "折りたたむ",
-  aiAnalysisExpand: "展開する",
-  aiSimplify: "簡略化",
-  aiSimplifyLoading: "簡略化中...",
-  aiSimplifyMelody: "メロディのみ",
-  aiSimplifyBass: "ベースのみ",
-  aiSimplifySimplified: "簡略化",
-  aiSimplifySuccess: "楽譜を簡略化しました",
-  aiImprove: "改善",
-  aiImproveLoading: "改善中...",
-  aiImproveFiltering: "アーティファクト除去中...",
-  aiImproveChords: "コード分析中...",
-  aiImproveLlm: "AI 改善中 小節",
-  aiImproveSuccess: "楽譜を改善しました",
   aiError: "AI 処理に失敗しました",
   savePdf: "PDF",
   savePdfSuccess: "PDF を保存しました",
   midiExport: "MIDI",
-  midiExportSuccess: "MIDI をダウンロードしました",
+  midiExportSuccess: "MIDI を保存しました",
+  midiSaving: "MIDI 保存中...",
+  midiSaveDrive: "Drive に保存",
   mainViewEmpty: "サイドバーから音声ファイルを読み込んでください",
 };
 

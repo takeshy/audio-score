@@ -14,8 +14,8 @@
 - **五線譜レンダリング** — Canvas ベースの楽譜表示（符頭、臨時記号、加線、小節線）
 - **スコア再生** — Web Audio API による検出ノートの再生。小節クリックでその位置から再生開始、再生中は現在の小節がハイライト表示
 - **MIDIインポート** — `.mid` / `.midi` ファイルをファイル選択、ドラッグ＆ドロップ、Driveから読み込んで楽譜表示
-- **エクスポート** — MIDI、PDF、テキストスコア、ステムWAVダウンロード
-- **AI改善** — Gemini連携によるコード解析・スコア改善（オプション）
+- **エクスポート** — MIDI（Driveに保存またはダウンロード）、PDF、テキストスコア、ステムWAVダウンロード
+- **AIコード分析** — 解析後にGeminiによるコード自動検出（オプション）
 - **多言語UI** — 日本語・英語
 
 ## インストール
@@ -31,25 +31,33 @@ plugins/audio-score/
 
 ## 使い方
 
-1. GemiHub サイドバーで Audio Score パネルを開く
+1. GemiHub サイドバーで Audio Score パネルを開く。音声以外のファイル選択時は **Load Audio File** ボタンのみ表示
 
-![初期画面](docs/images/initial.png)
+![初期画面](docs/images/before_open.png)
 
-2. **Load** をクリック、またはオーディオファイル（MP3、WAV 等）や `.mid` ファイルをドラッグ＆ドロップ
+2. Drive で音声ファイルを選択すると、BPM指定・音源分離・解析モデルを含むソースカードが自動表示
 
-![ファイル読み込み](docs/images/load_file.png)
+![音声ファイル選択](docs/images/after_open.png)
 
-3. 必要に応じて音源分離を有効にしてステムを分離（ピアノ、ボーカル等）
+3. 音声ファイルを直接開くとオーディオプレイヤーとソースカードが表示
+
+![音声ファイルを開いた状態](docs/images/opened.png)
+
+4. 必要に応じて音源分離を実行してステムを分離（ピアノ、ボーカル等）。pianoステム選択時はPiano Transcriptionが自動選択。分離したWAVをダウンロードして後から楽譜起こしやMIDI変換に利用可能
 
 ![音源分離](docs/images/separated.png)
 
-4. 検出モデルを選択して **Analyze** をクリック
+5. 検出モデルを選択して **Analyze** をクリック
 
 ![解析中](docs/images/analyzing.png)
 
-5. 解析完了後に楽譜が表示される — 再生、MIDI/PDFエクスポート、小節クリックでその位置から再生開始
+6. 解析完了後に楽譜が表示 — 再生、PDFエクスポート、小節クリックでその位置から再生開始。Gemini利用可能時はコードアノテーションが自動追加
 
 ![解析結果](docs/images/analyzed.png)
+
+7. **MIDI** をクリックして **Drive に保存** または **ダウンロード** を選択
+
+![MIDIエクスポート](docs/images/midi.png)
 
 ## アーキテクチャ
 
@@ -66,7 +74,7 @@ src/
 │   ├── noteSegmenter.ts              # DetectedNote[] → ScoreData パイプライン
 │   ├── midiImport.ts                 # Standard MIDI File インポートパーサ
 │   ├── midiExport.ts                 # Standard MIDI File エクスポート
-│   ├── aiService.ts                  # Gemini AI（コード解析、スコア改善）
+│   ├── aiService.ts                  # Gemini AI（コード分析）
 │   ├── scoreParser.ts                # スコアテキスト形式パーサ
 │   └── player.ts                     # Web Audio 再生
 ├── ui/

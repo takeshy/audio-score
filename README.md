@@ -14,8 +14,8 @@ A [GemiHub](https://github.com/takeshy/gemihub) plugin that converts audio files
 - **Staff notation rendering** — canvas-based display with note heads, accidentals, ledger lines, and measure bars
 - **Score playback** — play back detected notes via Web Audio API; click any measure to start from there; current measure is highlighted during playback
 - **MIDI import** — open `.mid` / `.midi` files via file picker, drag & drop, or Drive to display as sheet music
-- **Export** — MIDI, PDF, plain text score, stem WAV download
-- **AI improvement** — optional Gemini integration for chord analysis and score refinement
+- **Export** — MIDI (save to Drive or download), PDF, plain text score, stem WAV download
+- **AI chord analysis** — automatic chord detection via Gemini after analysis (optional)
 - **Bilingual UI** — English and Japanese
 
 ## Installation
@@ -31,25 +31,33 @@ plugins/audio-score/
 
 ## Usage
 
-1. Open the Audio Score panel in the GemiHub sidebar
+1. Open the Audio Score panel in the GemiHub sidebar. When a non-audio file is selected, only the **Load Audio File** button is shown
 
-![Initial panel](docs/images/initial.png)
+![Initial panel](docs/images/before_open.png)
 
-2. Click **Load** or drag & drop an audio file (MP3, WAV, etc.) or a `.mid` file
+2. Select an audio file in Drive — the source card with BPM override, source separation, and analysis model appears automatically
 
-![Load file](docs/images/load_file.png)
+![Audio file selected](docs/images/after_open.png)
 
-3. Optionally enable source separation to isolate a stem (piano, vocals, etc.)
+3. You can also open an audio file directly to see the audio player alongside the source card
+
+![Audio file opened](docs/images/opened.png)
+
+4. Optionally run source separation to isolate stems (piano, vocals, etc.). When the piano stem is selected, Piano Transcription is auto-selected as the analysis model. Download separated WAV files for later transcription or MIDI export
 
 ![Source separation](docs/images/separated.png)
 
-4. Select a detection model and click **Analyze**
+5. Select a detection model and click **Analyze**
 
 ![Analyzing](docs/images/analyzing.png)
 
-5. The score is displayed when complete — play, export MIDI/PDF, or click a measure to start playback from there
+6. The score is displayed — play back, export PDF, or click a measure to start playback from there. Chord annotations are automatically added if Gemini is available
 
 ![Analysis result](docs/images/analyzed.png)
+
+7. Click **MIDI** to export — choose **Save to Drive** or **Download**
+
+![MIDI export](docs/images/midi.png)
 
 ## Architecture
 
@@ -66,7 +74,7 @@ src/
 │   ├── noteSegmenter.ts              # DetectedNote[] → ScoreData pipeline
 │   ├── midiImport.ts                 # Standard MIDI File import parser
 │   ├── midiExport.ts                 # Standard MIDI File export
-│   ├── aiService.ts                  # Gemini AI (chord analysis, score improvement)
+│   ├── aiService.ts                  # Gemini AI (chord analysis)
 │   ├── scoreParser.ts                # Score text format parser
 │   └── player.ts                     # Web Audio playback
 ├── ui/

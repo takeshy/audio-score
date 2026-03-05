@@ -129,9 +129,7 @@
 .audio-score-bpm-row {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
-  margin-bottom: 10px;
 }
 
 .audio-score-bpm-label {
@@ -141,7 +139,8 @@
 }
 
 .audio-score-bpm-input {
-  width: 72px;
+  flex: 1;
+  min-width: 0;
   padding: 4px 8px;
   background: var(--as-bg-primary);
   border: 1px solid var(--as-border);
@@ -541,7 +540,52 @@
   cursor: wait;
 }
 
-/* Demucs pre-analysis section */
+/* Audio source card */
+.audio-score-source-card {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--as-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--as-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audio-score-source-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-score-source-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--as-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-score-btn-sm {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.audio-score-sep-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.audio-score-analyze-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Legacy demucs section (kept for stem grid etc.) */
 .audio-score-demucs-section {
   margin-top: 12px;
   padding: 12px;
@@ -597,6 +641,14 @@
 
 .audio-score-model-row {
   margin-bottom: 6px;
+}
+
+.audio-score-model-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--as-text-secondary);
+  margin-bottom: 4px;
 }
 
 .audio-score-model-select {
@@ -672,6 +724,50 @@
   text-transform: capitalize;
 }
 
+
+/* Modal */
+.audio-score-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.audio-score-modal {
+  background: var(--as-bg-primary);
+  border: 1px solid var(--as-border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.audio-score-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--as-text);
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.audio-score-modal-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audio-score-modal-buttons .audio-score-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+  text-align: center;
+}
 
 /* ===== Main View ===== */
 .audio-score-main {
